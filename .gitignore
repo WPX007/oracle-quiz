@@ -1,0 +1,7 @@
+node_modules/
+oracle.db
+oracle.db-shm
+oracle.db-wal
+server.log
+.DS_Store
+Thumbs.db

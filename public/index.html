@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>王者荣耀策划联赛竞猜</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a1628;--bg2:#0f1f35;--bg3:#152a45;--bg4:#1a3356;
+  --gold:#c8aa6e;--gold2:#f0e6d2;--gold3:#785a28;
+  --teal:#0acf97;--teal2:#05a87d;
+  --red:#ff4655;--blue:#4a9eff;--text:#c4ccd8;--text2:#8b95a5;
+  --card:#12243d;--card-hover:#1a3050;--border:#1e3a5f;
+}
+body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingFang SC',sans-serif;min-height:100vh}
+
+/* ===== Login ===== */
+.login-page{
+  display:flex;align-items:center;justify-content:center;min-height:100vh;
+  background:linear-gradient(135deg,#060e1a 0%,#0a1628 40%,#122340 100%);
+}
+.login-box{
+  width:380px;padding:40px;background:var(--card);border:1px solid var(--border);
+  border-radius:16px;text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.5);
+}
+.login-box .logo{font-size:48px;margin-bottom:8px}
+.login-box h2{color:var(--gold);font-size:24px;letter-spacing:4px;margin-bottom:4px}
+.login-box .sub{color:var(--text2);font-size:13px;margin-bottom:30px}
+.login-box input{
+  width:100%;padding:12px 16px;margin-bottom:14px;background:var(--bg2);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;
+  outline:none;transition:.2s;
+}
+.login-box input:focus{border-color:var(--gold3)}
+.login-box input::placeholder{color:var(--text2)}
+.login-box button{
+  width:100%;padding:12px;background:linear-gradient(135deg,var(--gold3),var(--gold));
+  border:none;border-radius:8px;color:#1a1a2e;font-size:15px;font-weight:bold;
+  cursor:pointer;transition:.2s;letter-spacing:2px;
+}
+.login-box button:hover{filter:brightness(1.1)}
+.login-box .error{color:var(--red);font-size:13px;margin-top:10px;min-height:20px}
+.login-link{color:var(--text2);font-size:12px;margin-top:14px;cursor:pointer;transition:.2s}
+.login-link:hover{color:var(--gold)}
+
+/* ===== App Shell ===== */
+.app{display:none}
+
+.header{
+  background:linear-gradient(135deg,#0a1628 0%,#122340 50%,#0a1628 100%);
+  border-bottom:1px solid var(--border);padding:24px 20px;text-align:center;position:relative;
+}
+.header::before{
+  content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:600px;height:100%;
+  background:radial-gradient(ellipse at center,rgba(200,170,110,.08) 0%,transparent 70%);
+  pointer-events:none;
+}
+.header h1{font-size:36px;color:var(--gold);letter-spacing:6px;text-shadow:0 0 40px rgba(200,170,110,.3);position:relative}
+.header p{color:var(--text2);margin-top:4px;font-size:13px;letter-spacing:2px}
+.user-bar{
+  position:absolute;right:20px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:12px;
+}
+.user-bar .user-name{color:var(--gold2);font-size:14px}
+.user-bar .user-team{color:var(--text2);font-size:12px}
+.user-bar button{
+  padding:6px 14px;background:transparent;border:1px solid var(--border);
+  color:var(--text2);border-radius:4px;cursor:pointer;font-size:12px;transition:.2s;
+}
+.user-bar button:hover{border-color:var(--red);color:var(--red)}
+
+.nav{
+  display:flex;justify-content:center;gap:4px;padding:10px 20px;
+  background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;
+}
+.nav button{
+  padding:9px 24px;border:1px solid var(--border);background:transparent;
+  color:var(--text2);font-size:13px;cursor:pointer;border-radius:4px;transition:.2s;
+}
+.nav button:hover{background:var(--bg3);color:var(--text)}
+.nav button.active{background:var(--bg4);color:var(--gold);border-color:var(--gold3)}
+
+.stats-bar{
+  display:flex;justify-content:center;gap:40px;padding:14px;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+}
+.stat-item{text-align:center}
+.stat-item .num{font-size:22px;color:var(--gold);font-weight:bold}
+.stat-item .label{font-size:11px;color:var(--text2);margin-top:2px}
+
+.checkin-btn{
+  padding:8px 20px;border:none;border-radius:20px;font-size:13px;font-weight:bold;
+  cursor:pointer;transition:.2s;letter-spacing:1px;
+  background:linear-gradient(135deg,var(--teal2),var(--teal));color:#fff;
+  box-shadow:0 2px 10px rgba(10,207,151,.3);
+}
+.checkin-btn:hover{filter:brightness(1.15);transform:scale(1.05)}
+.checkin-btn.done{
+  background:var(--bg3);color:var(--text2);cursor:default;
+  box-shadow:none;
+}
+.checkin-btn.done:hover{filter:none;transform:none}
+
+.container{max-width:1400px;margin:0 auto;padding:20px}
+.section{display:none}
+.section.active{display:block}
+
+/* ===== Group Stage + Record Predictions ===== */
+.groups-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:16px}
+@media(max-width:900px){.groups-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:500px){.groups-grid{grid-template-columns:1fr}}
+
+.group-card{background:var(--card);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.group-card .group-title{
+  padding:10px;text-align:center;font-size:15px;font-weight:bold;
+  background:linear-gradient(135deg,var(--bg3),var(--bg4));color:var(--gold);
+  border-bottom:1px solid var(--border);letter-spacing:4px;
+}
+.group-team{
+  display:flex;align-items:center;padding:9px 12px;gap:8px;
+  border-bottom:1px solid rgba(30,58,95,.4);transition:.15s;
+}
+.group-team:last-child{border-bottom:none}
+.group-team .seed{
+  width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:bold;flex-shrink:0;
+}
+.group-team .seed.s1{background:var(--gold3);color:var(--gold2)}
+.group-team .seed.s2{background:#2a5a8a;color:#8ac}
+.group-team .seed.s3{background:#3a4a5a;color:#8b95a5}
+.group-team .seed.s4{background:#2a3040;color:#666}
+.group-team .name{flex:1;font-size:13px}
+.group-team .members{font-size:11px;color:var(--text2)}
+
+.record-section{margin-top:24px}
+.record-card{
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:16px;margin-bottom:14px;
+}
+.record-header{
+  display:flex;align-items:center;gap:10px;margin-bottom:12px;
+  padding-bottom:10px;border-bottom:1px solid var(--border);
+}
+.record-badge{
+  font-size:18px;font-weight:bold;padding:4px 14px;border-radius:6px;
+  letter-spacing:2px;min-width:60px;text-align:center;
+}
+.record-badge.cat-3-0{background:rgba(10,207,151,.15);color:var(--teal)}
+.record-badge.cat-3-1{background:rgba(74,158,255,.12);color:var(--blue)}
+.record-badge.cat-3-2{background:rgba(237,125,49,.12);color:#ed7d31}
+.record-badge.cat-0-3{background:rgba(255,70,85,.12);color:var(--red)}
+.record-desc{font-size:13px;color:var(--text2);flex:1}
+.record-count{font-size:12px;color:var(--gold);background:rgba(200,170,110,.1);padding:3px 10px;border-radius:10px}
+
+.team-chips{display:flex;flex-wrap:wrap;gap:8px}
+.team-chip{
+  padding:8px 14px;border-radius:6px;font-size:13px;
+  border:1px solid var(--border);color:var(--text);
+  cursor:pointer;transition:.15s;background:var(--bg2);
+  display:flex;align-items:center;gap:6px;
+}
+.team-chip:hover{background:var(--bg3);border-color:var(--gold3)}
+.team-chip.selected{border-color:var(--teal);background:rgba(10,207,151,.12);color:var(--teal);font-weight:bold}
+.team-chip.selected::before{content:'✓ '}
+.team-chip.correct{border-color:var(--teal);background:rgba(10,207,151,.18);color:var(--teal)}
+.team-chip.wrong{border-color:var(--red);background:rgba(255,70,85,.08);color:var(--red);opacity:.5;text-decoration:line-through}
+.team-chip .chip-votes{font-size:10px;color:var(--text2);margin-left:2px}
+.team-chip.chip-disabled{opacity:.35;cursor:not-allowed}
+.record-card.cat-locked{border-color:rgba(255,70,85,.3)}
+
+/* ===== Swiss Round ===== */
+.swiss-bracket{overflow-x:auto;padding:16px 0}
+.swiss-row{display:flex;align-items:flex-start;gap:20px;min-width:1200px}
+.swiss-round{
+  display:flex;flex-direction:column;align-items:center;min-width:200px;flex-shrink:0;
+}
+.swiss-round-title{
+  font-size:13px;color:var(--gold);letter-spacing:2px;margin-bottom:12px;
+  padding:6px 18px;border:1px solid var(--gold3);border-radius:16px;
+  background:rgba(200,170,110,.05);white-space:nowrap;
+}
+.swiss-group{margin-bottom:18px;width:100%}
+.swiss-group-label{
+  font-size:16px;font-weight:bold;color:var(--gold);text-align:center;margin-bottom:10px;
+  padding:8px 14px;background:linear-gradient(135deg,var(--bg3),var(--bg4));
+  border:1px solid var(--gold3);border-radius:6px;letter-spacing:2px;
+}
+.swiss-group-label.promote{color:var(--teal);border-color:var(--teal2);background:linear-gradient(135deg,rgba(10,207,151,.08),rgba(10,207,151,.15))}
+.swiss-group-label.eliminate{color:var(--red);border-color:rgba(255,70,85,.4);background:linear-gradient(135deg,rgba(255,70,85,.06),rgba(255,70,85,.12))}
+.swiss-arrow{color:var(--text2);font-size:20px;padding-top:50px;flex-shrink:0}
+
+/* ===== Bracket ===== */
+.bracket-section{
+  background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:16px;margin-bottom:16px;
+}
+.section-title{
+  font-size:16px;color:var(--gold);margin-bottom:14px;padding-bottom:8px;
+  border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;
+}
+.section-title .badge{font-size:11px;padding:2px 10px;border-radius:10px}
+.section-title .badge.w{background:rgba(10,207,151,.15);color:var(--teal)}
+.section-title .badge.l{background:rgba(255,70,85,.12);color:var(--red)}
+.section-title .badge.f{background:rgba(200,170,110,.15);color:var(--gold)}
+
+.bracket-row{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:12px}
+.bracket-col{display:flex;flex-direction:column;gap:6px;align-items:center;flex-shrink:0}
+.bracket-col .round-label{
+  font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;
+  padding:3px 12px;border:1px solid var(--gold3);border-radius:14px;
+  background:rgba(200,170,110,.05);white-space:nowrap;
+}
+.arrow{color:var(--text2);font-size:18px;padding:0 2px;flex-shrink:0}
+
+.match-card{
+  width:192px;background:var(--card);border:1px solid var(--border);
+  border-radius:6px;overflow:hidden;transition:.2s;flex-shrink:0;
+  margin-bottom:8px;
+}
+.match-card:hover{border-color:var(--gold3)}
+.match-card .match-hdr{
+  font-size:11px;color:var(--text2);text-align:center;
+  background:rgba(0,0,0,.2);letter-spacing:1px;display:flex;justify-content:space-between;padding:4px 10px;
+}
+.match-card .match-hdr .lock-badge{color:var(--red);font-size:9px}
+.match-slot{
+  display:flex;align-items:center;padding:8px 10px;gap:6px;
+  cursor:pointer;transition:.12s;border-bottom:1px solid rgba(30,58,95,.3);position:relative;
+}
+.match-slot:last-child{border-bottom:none}
+.match-slot:hover{background:var(--card-hover)}
+.match-slot.picked{background:rgba(10,207,151,.1)}
+.match-slot.picked::after{
+  content:'✓';position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  color:var(--teal);font-size:11px;font-weight:bold;
+}
+.match-slot.correct{background:rgba(10,207,151,.12);border-left:3px solid var(--teal)}
+.match-slot.wrong{background:rgba(255,70,85,.06);border-left:3px solid var(--red);opacity:.5}
+.match-slot.disabled{cursor:not-allowed;opacity:.5}
+.match-slot .team-name{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.match-slot .team-name.tbd{color:var(--text2);font-style:italic}
+.match-slot .score-val{font-size:11px;color:var(--gold);font-weight:bold}
+
+.gf-wrap{
+  text-align:center;padding:20px;
+  background:linear-gradient(135deg,rgba(200,170,110,.04),rgba(10,207,151,.04));
+  border:1px solid var(--gold3);border-radius:12px;margin-top:16px;
+}
+.gf-wrap .trophy{font-size:44px}
+.gf-wrap h3{color:var(--gold);font-size:18px;letter-spacing:4px;margin:4px 0 12px}
+.gf-wrap .gf-note{color:var(--text2);font-size:12px;margin-bottom:12px}
+.gf-wrap .match-card{margin:0 auto}
+
+/* ===== Leaderboard ===== */
+.lb-table{width:100%;border-collapse:collapse;margin-top:16px}
+.lb-table th{
+  padding:10px 14px;text-align:left;font-size:12px;color:var(--gold);
+  background:var(--bg3);border-bottom:2px solid var(--gold3);position:sticky;top:40px;
+}
+.lb-table td{padding:9px 14px;font-size:13px;border-bottom:1px solid var(--border)}
+.lb-table tr:hover td{background:var(--card-hover)}
+.lb-table .r1{color:var(--gold);font-weight:bold;font-size:15px}
+.lb-table .r2{color:#c0c0c0;font-weight:bold}
+.lb-table .r3{color:#cd7f32;font-weight:bold}
+.lb-table .positive{color:var(--teal)}
+.lb-table .negative{color:var(--red)}
+.lb-table .me-row td{background:rgba(200,170,110,.08)}
+
+/* ===== Rules ===== */
+.rules-panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:24px;margin-top:16px;line-height:2}
+.rules-panel h3{color:var(--gold);margin-bottom:10px;font-size:17px}
+.rules-panel li{color:var(--text);font-size:13px;margin-left:20px}
+.rules-panel .hl{color:var(--teal);font-weight:bold}
+
+/* ===== Admin Panel ===== */
+.admin-panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:20px;margin-top:16px}
+.admin-panel h3{color:var(--gold);margin-bottom:14px}
+.admin-row{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.admin-row select,.admin-row input{
+  padding:8px 10px;background:var(--bg2);border:1px solid var(--border);
+  color:var(--text);border-radius:4px;font-size:13px;
+}
+.admin-row select{min-width:140px}
+.admin-btn{
+  padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:bold;transition:.2s;
+}
+.admin-btn.primary{background:var(--teal);color:#fff}
+.admin-btn.danger{background:var(--red);color:#fff}
+.admin-btn.warn{background:#ed7d31;color:#fff}
+.admin-btn:hover{filter:brightness(1.15)}
+.admin-msg{font-size:12px;color:var(--teal);margin-top:8px;min-height:18px}
+
+.overview-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+.ov-card{
+  background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+  padding:14px;text-align:center;
+}
+.ov-card .ov-num{font-size:28px;font-weight:bold;color:var(--gold)}
+.ov-card .ov-label{font-size:11px;color:var(--text2);margin-top:4px}
+
+.detail-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+.detail-table th,.lb-table th{cursor:pointer;user-select:none}
+.detail-table th:hover,.lb-table th:hover{color:var(--gold2)}
+.sort-arrow{font-size:10px;margin-left:3px;color:var(--teal)}
+.detail-table th{
+  padding:8px 10px;text-align:left;color:var(--gold);background:var(--bg3);
+  border-bottom:2px solid var(--gold3);position:sticky;top:0;
+}
+.detail-table td{padding:7px 10px;border-bottom:1px solid var(--border)}
+.detail-table tr:hover td{background:var(--card-hover)}
+.detail-table .won-yes{color:var(--teal)}
+.detail-table .won-no{color:var(--red);opacity:.6}
+
+.admin-tabs{display:flex;gap:4px;margin-bottom:14px}
+.admin-tabs button{
+  padding:7px 16px;border:1px solid var(--border);background:transparent;
+  color:var(--text2);font-size:12px;cursor:pointer;border-radius:4px;transition:.15s;
+}
+.admin-tabs button:hover{background:var(--bg3)}
+.admin-tabs button.active{background:var(--bg4);color:var(--gold);border-color:var(--gold3)}
+
+.admin-sub{display:none}
+.admin-sub.active{display:block}
+
+.scroll-box{max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+.no-data{color:var(--text2);font-size:13px;padding:20px;text-align:center}
+
+/* ===== Markets (custom betting) ===== */
+.markets-group{margin-bottom:20px}
+.markets-group-title{
+  font-size:15px;color:var(--gold);padding:8px 14px;margin-bottom:10px;
+  background:linear-gradient(135deg,var(--bg3),var(--bg4));border-radius:6px;
+  display:flex;align-items:center;gap:8px;
+}
+.market-card{
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:14px;margin-bottom:10px;
+}
+.market-card.m-locked{border-color:rgba(255,70,85,.3)}
+.market-card.m-settled{border-color:rgba(10,207,151,.3)}
+.market-hdr{
+  display:flex;align-items:center;gap:10px;margin-bottom:10px;
+  padding-bottom:8px;border-bottom:1px solid var(--border);
+}
+.market-title{font-size:14px;font-weight:bold;color:var(--text);flex:1}
+.market-status{font-size:11px;padding:2px 8px;border-radius:8px}
+.market-status.open{color:var(--teal);background:rgba(10,207,151,.1)}
+.market-status.locked{color:var(--red);background:rgba(255,70,85,.1)}
+.market-status.settled{color:var(--teal);background:rgba(10,207,151,.15)}
+
+.market-options{display:flex;flex-wrap:wrap;gap:8px}
+.market-opt{
+  padding:8px 16px;border-radius:6px;font-size:13px;
+  border:1px solid var(--border);color:var(--text);background:var(--bg2);
+  cursor:pointer;transition:.15s;display:flex;align-items:center;gap:6px;
+}
+.market-opt:hover{background:var(--bg3);border-color:var(--gold3)}
+.market-opt.picked{border-color:var(--teal);background:rgba(10,207,151,.12);color:var(--teal);font-weight:bold}
+.market-opt.picked::before{content:'✓ '}
+.market-opt.correct{border-color:var(--teal);background:rgba(10,207,151,.2);color:var(--teal)}
+.market-opt.correct::before{content:'✅ '}
+.market-opt.wrong{border-color:var(--red);background:rgba(255,70,85,.08);color:var(--red);opacity:.5}
+.market-opt.m-disabled{opacity:.4;cursor:not-allowed}
+.market-opt .opt-votes{font-size:10px;color:var(--text2)}
+
+.no-markets{color:var(--text2);text-align:center;padding:40px;font-size:14px}
+
+.market-pool{font-size:11px;color:var(--gold);background:rgba(200,170,110,.1);padding:2px 8px;border-radius:8px}
+.market-bet-area{
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+}
+.market-bet-area input{
+  width:100px;padding:6px 10px;background:var(--bg2);border:1px solid var(--border);
+  border-radius:4px;color:var(--text);font-size:13px;outline:none;text-align:center;
+}
+.market-bet-area input:focus{border-color:var(--gold3)}
+.bet-btn{
+  padding:6px 16px;border:none;border-radius:4px;font-size:12px;font-weight:bold;
+  cursor:pointer;background:var(--teal);color:#fff;transition:.15s;
+}
+.bet-btn:hover{filter:brightness(1.15)}
+.bet-info{font-size:11px;color:var(--text2)}
+.bet-my{font-size:12px;color:var(--teal);font-weight:bold}
+.opt-amount{font-size:10px;color:var(--gold)}
+.opt-odds{font-size:10px;color:#ed7d31;margin-left:2px}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:30px;left:50%;transform:translateX(-50%) translateY(20px);
+  background:var(--bg4);color:var(--gold);padding:12px 24px;border-radius:8px;
+  border:1px solid var(--gold3);font-size:13px;z-index:999;
+  opacity:0;transition:.3s;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+.modal-overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);
+  display:flex;align-items:center;justify-content:center;z-index:200;
+}
+.modal-box{
+  width:340px;padding:28px;background:var(--card);border:1px solid var(--border);
+  border-radius:12px;
+}
+.modal-box h3{color:var(--gold);margin-bottom:16px;text-align:center}
+.modal-box input{
+  width:100%;padding:10px 14px;margin-bottom:10px;background:var(--bg2);
+  border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none;
+}
+.modal-box input:focus{border-color:var(--gold3)}
+.modal-btn{
+  flex:1;padding:10px;border:none;border-radius:6px;font-size:13px;font-weight:bold;cursor:pointer;
+}
+.modal-btn.cancel{background:var(--bg3);color:var(--text2)}
+.modal-btn.confirm{background:linear-gradient(135deg,var(--gold3),var(--gold));color:#1a1a2e)}
+</style>
+</head>
+<body>
+
+<!-- ===== Login Page ===== -->
+<div class="login-page" id="login-page">
+  <div class="login-box">
+    <div class="logo">🔮</div>
+    <h2>策划联赛竞猜</h2>
+    <div class="sub">王者荣耀策划联赛 · 竞猜系统</div>
+    <div id="login-form">
+      <input type="text" id="login-user" placeholder="账号（英文名）" autocomplete="username">
+      <input type="password" id="login-pass" placeholder="密码" autocomplete="current-password">
+      <button onclick="doLogin()">登 录</button>
+      <div class="error" id="login-error"></div>
+      <div class="login-link" onclick="showLoginPwd()">修改密码</div>
+    </div>
+    <div id="pwd-form" style="display:none">
+      <input type="text" id="pwd-user" placeholder="账号（英文名）" autocomplete="username" readonly style="opacity:.6;cursor:not-allowed">
+      <input type="password" id="pwd-old" placeholder="当前密码">
+      <input type="password" id="pwd-new" placeholder="新密码（至少4位）">
+      <input type="password" id="pwd-confirm" placeholder="确认新密码">
+      <button onclick="doChangePwd()">确认修改</button>
+      <div class="error" id="pwd-error"></div>
+      <div class="login-link" onclick="showLoginForm()">返回登录</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Main App ===== -->
+<div class="app" id="app">
+  <div class="header">
+    <h1>王者荣耀策划联赛竞猜</h1>
+    <p>80 人联赛 · 竞猜系统</p>
+    <div class="user-bar">
+      <div>
+        <div class="user-name" id="hdr-name"></div>
+        <div class="user-team" id="hdr-team"></div>
+      </div>
+      <button onclick="doLogout()">退出</button>
+    </div>
+  </div>
+
+  <div class="nav" id="main-nav">
+    <button class="active" data-tab="swiss">瑞士轮</button>
+    <button data-tab="groups">8强预测</button>
+    <button data-tab="markets">比赛竞猜</button>
+    <button data-tab="bracket">双败淘汰赛</button>
+    <button data-tab="leaderboard">排行榜</button>
+    <button data-tab="rules">玩法介绍</button>
+    <button data-tab="admin" id="admin-tab" style="display:none">管理后台</button>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-item"><div class="num" id="s-preds">0</div><div class="label">已预测</div></div>
+    <div class="stat-item"><div class="num" id="s-hits">0</div><div class="label">命中</div></div>
+    <div class="stat-item"><div class="num" id="s-rate">0%</div><div class="label">命中率</div></div>
+    <div class="stat-item"><div class="num" id="s-pts">1000</div><div class="label">竞彩币</div></div>
+    <div class="stat-item"><div class="num" id="s-days">0</div><div class="label">签到天数</div></div>
+    <div class="stat-item" id="checkin-wrap"></div>
+  </div>
+
+  <div class="container">
+    <div class="section active" id="sec-swiss"></div>
+    <div class="section" id="sec-groups"></div>
+    <div class="section" id="sec-markets"></div>
+    <div class="section" id="sec-bracket"></div>
+    <div class="section" id="sec-leaderboard"></div>
+    <div class="section" id="sec-rules">
+      <div class="rules-panel">
+        <h3>🔮 玩法介绍</h3>
+        <ul>
+          <li>预测每个系列赛中哪支队伍会赢得比赛，每个阶段结束后结算</li>
+          <li>每位参与者初始获得 <span class="hl">1000 竞彩币</span></li>
+          <li>每场比赛 <span class="hl">赛前 5 分钟封盘</span>，封盘后不可修改预测</li>
+          <li>8强预测：预测瑞士轮各队战绩（3-0/3-1/3-2/0-3），全部命中瓜分奖池</li>
+          <li>淘汰赛：预测每场胜者，命中瓜分奖池</li>
+        </ul>
+        <h3 style="margin-top:20px">🏆 奖项</h3>
+        <ul>
+          <li><span class="hl">赌神</span> — 竞彩币余额第 1 名</li>
+          <li><span class="hl">赌圣</span> — 竞彩币余额第 2-3 名</li>
+          <li><span class="hl">预言帝</span> — 命中率最高（至少参与一半场次比赛竞猜）</li>
+          <li><span class="hl">毒奶王</span> — 命中率最低（至少参与一半场次比赛竞猜）</li>
+          <li><span class="hl">梭哈勇士</span> — 单笔下注最大且命中</li>
+          <li><span class="hl">全勤奖</span> — 每场比赛都参与竞猜</li>
+        </ul>
+      </div>
+    </div>
+    <div class="section" id="sec-admin"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+
+<script>
+// ── Constants ─────────────────────────────────────────────
+const GROUPS = {
+  A:[
+    {name:'卓慧玲队',seed:1,members:['卓慧玲','李宝琪','杨蔚庆','曾沛源','郝奕博']},
+    {name:'钟文迪队',seed:8,members:['钟文迪','王鹏森','刘宇骅','朱羽豪','刘应池']},
+    {name:'谭章斌队',seed:9,members:['谭章斌','赵左臣','晏晨熙','庞汉雄','贺江舟']},
+    {name:'何博文队',seed:16,members:['何博文','王稼钰','龙柯宇','宋天磊','张岱']},
+  ],
+  B:[
+    {name:'李仁杰队',seed:2,members:['李仁杰','于筱薇','俞承驰','毛竹','向牧']},
+    {name:'张书嘉队',seed:7,members:['张书嘉','王铭宇','陈均伟','李浩','于智鑫']},
+    {name:'何怡君队',seed:10,members:['何怡君','蒋佳志','苏宇','贾宇新','王强']},
+    {name:'张益帆队',seed:15,members:['张益帆','周金滔','刘培俊','苑韬','童颜']},
+  ],
+  C:[
+    {name:'左天白队',seed:3,members:['左天白','吴亭瑶','高磊','罗凯','何昱辰']},
+    {name:'郑宇队',seed:6,members:['郑宇','杨程博','郭琦','李丁','张晋']},
+    {name:'林辉河队',seed:11,members:['林辉河','王旭东','修北辰','张斯铭','周靖奇']},
+    {name:'秦祥龙队',seed:14,members:['秦祥龙','梁辰','李石','吴马倩男','杨栋']},
+  ],
+  D:[
+    {name:'马浩队',seed:4,members:['马浩','赵宇涵','毛于升','张嘉璐','丁亮']},
+    {name:'高世豪队',seed:5,members:['高世豪','杨润泽','张嘉予','乔榛','刘景晟']},
+    {name:'温鹏祥队',seed:12,members:['温鹏祥','黄俊','陈磊','邓淦','孙少文']},
+    {name:'李思鹏队',seed:13,members:['李思鹏','严云天','付启煜','曹克勤','周萌']},
+  ],
+};
+
+const ALL_TEAMS = Object.values(GROUPS).flat().map(t=>t.name);
+
+const BRACKET_DEF = {
+  winners: [
+    {title:'胜者组第一轮',ids:['W1','W2','W3','W4']},
+    {title:'胜者组半决赛',ids:['W5','W6']},
+    {title:'胜者组决赛',ids:['W7']},
+  ],
+  losers: [
+    {title:'败者组R1',ids:['L1','L2']},
+    {title:'败者组R2',ids:['L3','L4']},
+    {title:'败者组半决赛',ids:['L5']},
+    {title:'败者组决赛',ids:['L6']},
+  ],
+};
+
+const MATCH_TEAMS = {
+  W1:{t1:'S1',t2:'S8'},W2:{t1:'S4',t2:'S5'},W3:{t1:'S2',t2:'S7'},W4:{t1:'S3',t2:'S6'},
+  W5:{t1:'W1w',t2:'W2w'},W6:{t1:'W3w',t2:'W4w'},W7:{t1:'W5w',t2:'W6w'},
+  L1:{t1:'W1l',t2:'W2l'},L2:{t1:'W3l',t2:'W4l'},
+  L3:{t1:'L1w',t2:'W6l'},L4:{t1:'L2w',t2:'W5l'},
+  L5:{t1:'L3w',t2:'L4w'},L6:{t1:'L5w',t2:'W7l'},
+  GF:{t1:'W7w',t2:'L6w'},
+};
+
+// ── State ─────────────────────────────────────────────────
+let currentUser = null;
+let myPredictions = {};   // match_id -> { pick, amount, payout, settled, won }
+let myRecordPreds = {};   // category -> { teamName: { amount, payout, settled, won } }
+const RECORD_MAX = {'3-0':2, '3-1':3, '3-2':3, '0-3':2};
+let recordPools = {};     // category -> pool total
+let matchesData = {};     // id -> match obj
+let recordStats = {};     // category -> { team: count }
+let lockStatus = { categories: {}, matches: {} };
+let checkinState = { checkedIn: false, totalDays: 0 };
+let marketsData = [];    // array of market objects
+let myBets = {};         // market_id -> { option_id, amount, payout, settled, won }
+
+// ── API helpers ───────────────────────────────────────────
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── Auth ──────────────────────────────────────────────────
+async function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  try {
+    const data = await api('/api/login', { method: 'POST', body: { username: user, password: pass } });
+    currentUser = data.user;
+    enterApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function doLogout() {
+  await api('/api/logout', { method: 'POST' });
+  currentUser = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-page').style.display = 'flex';
+}
+
+async function checkSession() {
+  try {
+    const data = await api('/api/me');
+    currentUser = data.user;
+    enterApp();
+  } catch {
+    document.getElementById('login-page').style.display = 'flex';
+  }
+}
+
+function enterApp() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('hdr-name').textContent = currentUser.display;
+  document.getElementById('hdr-team').textContent = currentUser.team || '';
+  if (currentUser.is_admin) document.getElementById('admin-tab').style.display = '';
+  loadAllData();
+}
+
+// ── Data loading ──────────────────────────────────────────
+async function loadAllData() {
+  const [matchRes, predRes, lbRes, statsRes, lockRes, ciRes, mkRes, betRes] = await Promise.all([
+    api('/api/matches'),
+    api('/api/predictions'),
+    api('/api/leaderboard'),
+    api('/api/record-stats'),
+    api('/api/lock-status'),
+    api('/api/checkin'),
+    api('/api/markets'),
+    api('/api/my-bets'),
+  ]);
+
+  lockStatus = lockRes;
+  checkinState = ciRes;
+  updateCheckinBtn();
+
+  matchesData = {};
+  for (const m of matchRes.matches) matchesData[m.id] = m;
+
+  myPredictions = {};
+  for (const p of predRes.predictions) myPredictions[p.match_id] = p;
+
+  myRecordPreds = {'3-0':{},'3-1':{},'3-2':{},'0-3':{}};
+  for (const p of predRes.recordPredictions) {
+    if (!myRecordPreds[p.category]) myRecordPreds[p.category] = {};
+    myRecordPreds[p.category][p.team_name] = { amount: p.amount, payout: p.payout, settled: p.settled, won: p.won };
+  }
+
+  recordStats = {};
+  for (const s of statsRes.stats) {
+    if (!recordStats[s.category]) recordStats[s.category] = {};
+    recordStats[s.category][s.team_name] = { picks: s.picks, total: s.total_amount };
+  }
+  recordPools = statsRes.pools || {};
+
+  marketsData = mkRes.markets;
+  myBets = {};
+  for (const b of betRes.bets) myBets[b.market_id] = b;
+
+  renderGroups();
+  renderSwiss();
+  renderMarkets();
+  renderBracket();
+  renderLeaderboard(lbRes.leaderboard);
+  if (currentUser.is_admin) renderAdmin();
+  updateStats(predRes, lbRes.leaderboard);
+}
+
+function updateStats(predRes, lb) {
+  let recCount = 0;
+  for (const s of Object.values(myRecordPreds)) recCount += Object.keys(s).length;
+  const betCount = Object.keys(myBets).length;
+  const total = Object.keys(myPredictions).length + recCount + betCount;
+  const betArr = Object.values(myBets);
+  const allPreds = [...(predRes?.predictions || []), ...(predRes?.recordPredictions || []), ...betArr];
+  const settled = allPreds.filter(p => p.settled);
+  const hits = settled.filter(p => p.won);
+  const me = lb?.find(u => u.id === currentUser.id);
+
+  document.getElementById('s-preds').textContent = total;
+  document.getElementById('s-hits').textContent = hits.length;
+  document.getElementById('s-rate').textContent = settled.length ? Math.round(hits.length / settled.length * 100) + '%' : '0%';
+  document.getElementById('s-pts').textContent = me?.points ?? currentUser.points;
+}
+
+// ── Tab switching ─────────────────────────────────────────
+document.getElementById('main-nav').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + btn.dataset.tab).classList.add('active');
+});
+
+// ── Groups + Record Predictions ───────────────────────────
+const RECORD_CATS = [
+  {cat:'3-0', label:'3-0', desc:'预测哪些队伍将在瑞士轮中全胜晋级（必选 2 支）', icon:'🔥', max:2},
+  {cat:'3-1', label:'3-1', desc:'预测哪些队伍将以 3-1 晋级8强（必选 3 支）', icon:'💪', max:3},
+  {cat:'3-2', label:'3-2', desc:'预测哪些队伍将以 3-2 惊险晋级8强（必选 3 支）', icon:'😅', max:3},
+  {cat:'0-3', label:'0-3', desc:'预测哪些队伍将在瑞士轮中全败淘汰（必选 2 支）', icon:'💀', max:2},
+];
+
+let recSelecting = {};  // category -> Set of team names being selected (before confirm)
+
+function renderGroups() {
+  const container = document.getElementById('sec-groups');
+  let html = '';
+
+  html += '<div class="record-section">';
+  for (const rc of RECORD_CATS) {
+    const myPicks = myRecordPreds[rc.cat] || {};
+    const myTeams = Object.keys(myPicks);
+    const hasBet = myTeams.length > 0;
+    const myAmount = hasBet ? myPicks[myTeams[0]]?.amount || 0 : 0;
+    const isSettled = hasBet && myPicks[myTeams[0]]?.settled;
+    const stats = recordStats[rc.cat] || {};
+    const pool = recordPools[rc.cat] || 0;
+    const catLocked = isCatLocked(rc.cat);
+    const lockTag = catLocked ? '<span style="color:var(--red);font-size:12px">🔒 已封盘</span>' : '';
+    const poolTag = pool > 0 ? `<span class="market-pool">奖池 ${pool} 币</span>` : '';
+
+    const selecting = recSelecting[rc.cat] || new Set();
+    const selCount = selecting.size;
+    const isSelectMode = !hasBet && !catLocked;
+
+    html += `<div class="record-card ${catLocked ? 'cat-locked' : ''}">
+      <div class="record-header">
+        <div class="record-badge cat-${rc.cat}">${rc.icon} ${rc.label}</div>
+        <div class="record-desc">${rc.desc}</div>
+        ${poolTag}${lockTag}
+      </div>
+      <div class="team-chips">`;
+
+    for (const t of ALL_TEAMS) {
+      const isMine = !!myPicks[t];
+      const isSelecting = selecting.has(t);
+      const st = stats[t] || { picks: 0, total: 0 };
+
+      let cls = '';
+      if (isMine) cls = catLocked || isSettled ? 'selected chip-disabled' : 'selected';
+      else if (isSelecting) cls = 'selected';
+      else if (catLocked || (hasBet && !isSettled)) cls = 'chip-disabled';
+      else if (!isSelectMode) cls = 'chip-disabled';
+      else if (selCount >= rc.max && !isSelecting) cls = 'chip-disabled';
+
+      const canClick = isSelectMode && !isMine && (isSelecting || selCount < rc.max);
+      const click = canClick ? `onclick="toggleRecSelect('${rc.cat}','${t}')"` : '';
+      const votesTag = st.picks > 0 ? `<span class="opt-votes">${st.picks}人 ${st.total}币</span>` : '';
+      html += `<div class="team-chip ${cls}" ${click}>${t} ${votesTag}</div>`;
+    }
+    html += '</div>';
+
+    if (isSelectMode) {
+      const ready = selCount === rc.max;
+      html += `<div class="market-bet-area">
+        <span class="bet-info">已选 ${selCount}/${rc.max} 支队伍${ready ? '' : '，请继续选择'}</span>
+        ${ready ? `<input type="number" id="rec-amt-${rc.cat}" placeholder="下注金额" min="1" style="width:100px;padding:5px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px">
+        <button class="bet-btn" onclick="submitRecordBet('${rc.cat}')">确认下注</button>` : ''}
+        ${selCount > 0 ? `<button style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:4px;cursor:pointer;font-size:12px" onclick="clearRecSelect('${rc.cat}')">重选</button>` : ''}
+      </div>`;
+    } else if (hasBet && !isSettled && !catLocked) {
+      html += `<div class="market-bet-area">
+        <span class="bet-my">已下注 ${myAmount} 币 → ${myTeams.join('、')}</span>
+        <button style="padding:5px 12px;border:1px solid var(--border);background:transparent;color:var(--red);border-radius:4px;cursor:pointer;font-size:12px" onclick="removeRecordBet('${rc.cat}')">撤回（退还 ${myAmount} 币）</button>
+      </div>`;
+    } else if (hasBet && isSettled) {
+      const firstPick = myPicks[myTeams[0]];
+      const anyWon = myTeams.some(t => myPicks[t]?.won);
+      const payout = firstPick.payout || 0;
+      const resultText = anyWon
+        ? `<span style="color:var(--teal)">赢得 ${payout} 币（净赚 ${payout - myAmount}）</span>`
+        : `<span style="color:var(--red)">亏损 ${myAmount} 币</span>`;
+      html += `<div class="market-bet-area">
+        <span class="bet-info">下注 ${myAmount} 币 → ${myTeams.join('、')} → ${resultText}</span>
+      </div>`;
+    }
+
+    html += '</div>';
+  }
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function isCatLocked(cat) { return !currentUser?.is_admin && lockStatus.categories[cat]; }
+function isMatchLocked(mid) { return lockStatus.matches[mid]; }
+
+function updateCheckinBtn() {
+  const wrap = document.getElementById('checkin-wrap');
+  document.getElementById('s-days').textContent = checkinState.totalDays;
+  if (currentUser?.is_admin) {
+    wrap.innerHTML = '<span style="font-size:11px;color:var(--text2)">管理员</span>';
+    return;
+  }
+  if (checkinState.checkedIn) {
+    wrap.innerHTML = '<button class="checkin-btn done">今日已签到 ✓</button>';
+  } else {
+    wrap.innerHTML = '<button class="checkin-btn" onclick="doCheckin()">签到 +100</button>';
+  }
+}
+
+async function doCheckin() {
+  if (checkinState.checkedIn) return;
+  try {
+    const data = await api('/api/checkin', { method: 'POST' });
+    checkinState.checkedIn = true;
+    checkinState.totalDays = data.totalDays;
+    updateCheckinBtn();
+    toast('签到成功 +100 竞彩币');
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+function toggleRecSelect(category, team) {
+  if (!recSelecting[category]) recSelecting[category] = new Set();
+  const sel = recSelecting[category];
+  if (sel.has(team)) sel.delete(team);
+  else sel.add(team);
+  renderGroups();
+}
+
+function clearRecSelect(category) {
+  delete recSelecting[category];
+  renderGroups();
+}
+
+async function submitRecordBet(category) {
+  const sel = recSelecting[category];
+  if (!sel || sel.size !== (RECORD_MAX[category] || 2)) {
+    toast(`请选满 ${RECORD_MAX[category]} 支队伍`); return;
+  }
+  const input = document.getElementById('rec-amt-' + category);
+  const amount = input ? parseInt(input.value) : 0;
+  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
+  try {
+    await api('/api/predict-record', { method: 'POST', body: { category, teams: [...sel], amount } });
+    delete recSelecting[category];
+    toast(`下注 ${amount} 币 → ${[...sel].join('、')}（${category}）`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+async function removeRecordBet(category) {
+  try {
+    await api('/api/predict-record', { method: 'POST', body: { category, action: 'remove' } });
+    toast(`已撤回 ${category} 下注，竞彩币已退还`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+function showLoginPwd() {
+  document.getElementById('pwd-user').value = document.getElementById('login-user').value.trim();
+  document.getElementById('login-form').style.display = 'none';
+  document.getElementById('pwd-form').style.display = 'block';
+}
+function showLoginForm() {
+  document.getElementById('pwd-form').style.display = 'none';
+  document.getElementById('login-form').style.display = 'block';
+}
+async function doChangePwd() {
+  const user = document.getElementById('pwd-user').value.trim();
+  const oldP = document.getElementById('pwd-old').value;
+  const newP = document.getElementById('pwd-new').value;
+  const conf = document.getElementById('pwd-confirm').value;
+  const errEl = document.getElementById('pwd-error');
+  errEl.textContent = '';
+  if (!user) { errEl.textContent = '请输入账号'; return; }
+  if (newP !== conf) { errEl.textContent = '两次输入的新密码不一致'; return; }
+  if (newP.length < 4) { errEl.textContent = '新密码至少 4 位'; return; }
+  try {
+    await api('/api/change-password-public', { method: 'POST', body: { username: user, old_password: oldP, new_password: newP } });
+    errEl.style.color = 'var(--teal)';
+    errEl.textContent = '密码修改成功，请返回登录';
+  } catch (e) { errEl.style.color = 'var(--red)'; errEl.textContent = e.message; }
+}
+
+// ── Bracket ───────────────────────────────────────────────
+function resolveTeamName(ref) {
+  if (!ref) return null;
+  if (ref.startsWith('S')) return '种子' + ref.slice(1);
+  const mid = ref.slice(0, -1);
+  const type = ref.slice(-1);
+  const pred = myPredictions[mid];
+  const pick = pred?.pick;
+  if (!pick) return null;
+  if (type === 'w') return pick;
+  const m = MATCH_TEAMS[mid];
+  if (!m) return null;
+  const t1 = resolveTeamName(m.t1);
+  const t2 = resolveTeamName(m.t2);
+  if (pick === t1) return t2;
+  if (pick === t2) return t1;
+  return null;
+}
+
+function getSlotTeam(ref) {
+  const dbRef = ref;
+  if (ref.startsWith('S')) return { name: '种子' + ref.slice(1), resolved: false };
+  const name = resolveTeamName(ref);
+  return name ? { name, resolved: true } : { name: 'TBD', resolved: false };
+}
+
+function makeMatchCard(mid) {
+  const mDef = MATCH_TEAMS[mid];
+  const mData = matchesData[mid] || {};
+  const bo = mData.bo || 3;
+  const locked = !!mData.locked;
+  const result = mData.result;
+  const pred = myPredictions[mid];
+  const pick = pred?.pick;
+
+  let realT1 = mData.team1 && !mData.team1.match(/^[SWL]/) ? mData.team1 : null;
+  let realT2 = mData.team2 && !mData.team2.match(/^[SWL]/) ? mData.team2 : null;
+
+  let t1, t2;
+  if (mDef) {
+    t1 = realT1 ? { name: realT1, resolved: true } : getSlotTeam(mDef.t1);
+    t2 = realT2 ? { name: realT2, resolved: true } : getSlotTeam(mDef.t2);
+  } else {
+    t1 = realT1 ? { name: realT1, resolved: true } : { name: 'TBD', resolved: false };
+    t2 = realT2 ? { name: realT2, resolved: true } : { name: 'TBD', resolved: false };
+  }
+
+  const hasTeams = t1.resolved && t2.resolved;
+  const score = mData.score || '';
+  const scores = score.includes(':') ? score.split(':') : ['',''];
+  const isFinished = !!result && hasTeams;
+  const bs = mData.betStats || {};
+  const pool = Object.values(bs).reduce((s, v) => s + v.total, 0);
+  const lockBadge = locked && !isFinished ? '<span class="lock-badge">🔒 已封盘</span>' : '';
+  const scoreBadge = isFinished && score ? `<span style="color:var(--teal);font-size:10px">${score}</span>` : '';
+  const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
+  let html = `<div class="match-card ${locked ? 'locked' : ''}">`;
+  html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
+
+  [t1, t2].forEach((t, idx) => {
+    const isPicked = pick === t.name && t.resolved;
+    const isWinner = result && t.name === result;
+    const isLoser = result && t.resolved && t.name !== result;
+    const isCorrect = isWinner && isPicked;
+    const isWrong = isLoser && isPicked;
+    let cls = t.resolved ? '' : 'disabled';
+    if (isPicked) cls += ' picked';
+    if (isCorrect) cls = 'correct';
+    if (isWrong) cls = 'wrong';
+    if (locked || result) cls += ' disabled';
+
+    const pendingSel = pendingMatchPick[mid];
+    const hasPending = !!pendingSel;
+    const isPending = pendingSel === t.name;
+    const showAsPicked = hasPending ? isPending : isPicked;
+    const canClick = t.resolved && !locked && !result && !currentUser?.is_admin;
+    const clickAttr = canClick ? `onclick="selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"` : '';
+    const nameCls = t.resolved ? '' : 'tbd';
+    const myScore = isFinished ? (isWinner ? scores[0] : scores[1]) : '';
+    const teamScore = myScore ? `<span class="score-val">${myScore}</span>` : '';
+    const winMark = isWinner ? '<span style="color:var(--teal);font-size:10px;margin-left:2px">WIN</span>' : '';
+
+    const teamBet = bs[t.name] || { cnt: 0, total: 0 };
+    const odds = (pool > 0 && teamBet.total > 0) ? (pool / teamBet.total).toFixed(1) : 0;
+    const oddsTag = odds > 0 ? `<span style="font-size:9px;color:#ed7d31;margin-left:auto">×${odds}</span>` : '';
+    const betInfo = teamBet.cnt > 0 ? `<span style="font-size:9px;color:var(--text2);margin-left:2px">${teamBet.cnt}人${teamBet.total}币</span>` : '';
+
+    if (!isFinished) {
+      cls = t.resolved ? '' : 'disabled';
+      if (showAsPicked) cls += ' picked';
+      if (locked || result) cls += ' disabled';
+    }
+
+    html += `<div class="match-slot ${cls}" ${clickAttr}>
+      <div class="team-name ${nameCls}">${t.name}${winMark}</div>
+      ${isFinished ? `${teamScore}<span style="font-size:9px;color:var(--text2);margin-left:2px">${betInfo}</span>${oddsTag}` : `${betInfo}${oddsTag}`}
+    </div>`;
+  });
+
+  const canBet = !isFinished && !locked && !currentUser?.is_admin;
+  const pendingSel = pendingMatchPick[mid];
+
+  const pendingTeam = pendingMatchPick[mid];
+  const isChanging = pred && pendingTeam && pendingTeam !== pred.pick;
+
+  if (pendingTeam && !pred) {
+    html += `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(200,170,110,.05);font-size:10px">
+      <input type="number" id="match-amt-${mid}" placeholder="金额" min="1" value="100" style="width:60px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+      <span style="color:var(--teal);cursor:pointer;font-weight:bold" onclick="confirmMatchPick('${mid}')">确认</span>
+      <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
+    </div>`;
+  } else if (pred && !isFinished && canBet) {
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px;flex-wrap:nowrap">
+      <span style="color:var(--teal);white-space:nowrap">已押${pred.amount}币</span>
+      <span style="display:flex;align-items:center;gap:3px;margin-left:auto">
+        <input type="number" id="match-amt-${mid}" value="${pred.amount}" min="1" style="width:42px;padding:1px 3px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+        <span style="color:var(--gold);cursor:pointer;white-space:nowrap" onclick="confirmMatchPick('${mid}')">修改</span>
+        <span style="color:var(--text2);cursor:pointer;white-space:nowrap" onclick="cancelPredict('${mid}')">撤回</span>
+      </span>
+    </div>`;
+  } else if (pred && isFinished) {
+    const wonText = pred.won
+      ? `<span style="color:var(--teal)">+${pred.payout}</span>`
+      : `<span style="color:var(--red)">-${pred.amount}</span>`;
+    html += `<div style="padding:3px 8px;font-size:10px;text-align:center;color:var(--text2);background:rgba(0,0,0,.15)">${wonText}</div>`;
+  }
+
+  html += '</div>';
+  return html;
+}
+
+let pendingMatchPick = {};
+
+function selectMatchTeam(mid, team) {
+  const pred = myPredictions[mid];
+  if (pred && pred.pick === team && !pendingMatchPick[mid]) return;
+  if (pendingMatchPick[mid] === team) {
+    delete pendingMatchPick[mid];
+  } else {
+    pendingMatchPick[mid] = team;
+  }
+  renderSwiss();
+  renderBracket();
+}
+
+function cancelMatchPick(mid) {
+  delete pendingMatchPick[mid];
+  renderSwiss();
+  renderBracket();
+}
+
+async function confirmMatchPick(mid) {
+  const pred = myPredictions[mid];
+  const team = pendingMatchPick[mid] || pred?.pick;
+  if (!team) { toast('请先选择队伍'); return; }
+  const input = document.getElementById('match-amt-' + mid);
+  const amount = input ? parseInt(input.value) : 0;
+  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
+  try {
+    await api('/api/predict', { method: 'POST', body: { match_id: mid, pick: team, amount } });
+    delete pendingMatchPick[mid];
+    toast(`预测 ${mid}: ${team}（${amount} 币）`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+async function cancelPredict(mid) {
+  try {
+    await api('/api/predict', { method: 'POST', body: { match_id: mid, action: 'cancel' } });
+    delete pendingMatchPick[mid];
+    toast('已撤回预测，竞彩币已退还');
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+function renderBracket() {
+  const sec = document.getElementById('sec-bracket');
+
+  let html = '<div class="bracket-section"><div class="section-title">胜者组 <span class="badge w">WINNERS</span></div>';
+  html += '<div class="bracket-row">';
+  BRACKET_DEF.winners.forEach((round, ri) => {
+    if (ri > 0) html += '<div class="arrow">→</div>';
+    html += '<div class="bracket-col">';
+    html += `<div class="round-label">${round.title}</div>`;
+    round.ids.forEach(id => { html += makeMatchCard(id); });
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  html += '<div class="bracket-section"><div class="section-title">败者组 <span class="badge l">LOSERS</span></div>';
+  html += '<div class="bracket-row">';
+  BRACKET_DEF.losers.forEach((round, ri) => {
+    if (ri > 0) html += '<div class="arrow">→</div>';
+    html += '<div class="bracket-col">';
+    html += `<div class="round-label">${round.title}</div>`;
+    round.ids.forEach(id => { html += makeMatchCard(id); });
+    html += '</div>';
+  });
+  html += '</div></div>';
+
+  html += `<div class="gf-wrap">
+    <div class="trophy">🏆</div>
+    <h3>总 决 赛</h3>
+    <div class="gf-note">胜者组冠军 vs 败者组冠军 · BO5 · 全局BP</div>
+    ${makeMatchCard('GF')}
+  </div>`;
+
+  sec.innerHTML = html;
+}
+
+// ── Swiss Round ──────────────────────────────────────────
+const SWISS_DEF = [
+  { round: 'R1', groups: [
+    { label: '0-0', tag: '', ids: ['SR1_1','SR1_2','SR1_3','SR1_4','SR1_5','SR1_6','SR1_7','SR1_8'] }
+  ]},
+  { round: 'R2', groups: [
+    { label: '1-0', tag: '', ids: ['SR2_10_1','SR2_10_2','SR2_10_3','SR2_10_4'] },
+    { label: '0-1', tag: '', ids: ['SR2_01_1','SR2_01_2','SR2_01_3','SR2_01_4'] },
+  ]},
+  { round: 'R3', groups: [
+    { label: '2-0', tag: 'promote', note: '胜者=第1、2名', ids: ['SR3_20_1','SR3_20_2'] },
+    { label: '1-1', tag: '', ids: ['SR3_11_1','SR3_11_2','SR3_11_3','SR3_11_4'] },
+    { label: '0-2', tag: 'eliminate', note: '败者淘汰', ids: ['SR3_02_1','SR3_02_2'] },
+  ]},
+  { round: 'R4', groups: [
+    { label: '2-1', tag: 'promote', note: '胜者=第3、4、5名', ids: ['SR4_21_1','SR4_21_2','SR4_21_3','SR4_21_4'] },
+    { label: '1-2', tag: 'eliminate', note: '败者淘汰', ids: ['SR4_12_1','SR4_12_2','SR4_12_3','SR4_12_4'] },
+  ]},
+  { round: 'R5', groups: [
+    { label: '2-2', tag: 'promote', note: '胜者=第6、7、8名', ids: ['SR5_22_1','SR5_22_2','SR5_22_3'] },
+  ]},
+];
+
+function renderSwiss() {
+  const sec = document.getElementById('sec-swiss');
+  let html = '<div class="swiss-bracket"><div class="swiss-row">';
+
+  SWISS_DEF.forEach((rd, ri) => {
+    if (ri > 0) html += '<div class="swiss-arrow">→</div>';
+    html += '<div class="swiss-round">';
+    html += `<div class="swiss-round-title">瑞士轮 ${rd.round}</div>`;
+
+    for (const g of rd.groups) {
+      const tagCls = g.tag ? g.tag : '';
+      html += '<div class="swiss-group">';
+      html += `<div class="swiss-group-label ${tagCls}">${g.label}${g.note ? ' · ' + g.note : ''}</div>`;
+      for (const mid of g.ids) {
+        html += makeMatchCard(mid);
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+  });
+
+  html += '</div></div>';
+  sec.innerHTML = html;
+}
+
+// ── Markets (custom betting) ─────────────────────────────
+let selectedBetOption = {};  // market_id -> option_id (temporary selection before confirming)
+
+function renderMarkets() {
+  const sec = document.getElementById('sec-markets');
+  if (!marketsData.length) {
+    sec.innerHTML = '<div class="no-markets">暂无比赛竞猜盘口，请等待管理员创建</div>';
+    return;
+  }
+
+  const groups = {};
+  for (const m of marketsData) {
+    const key = m.match_label || '其他';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(m);
+  }
+
+  let html = '';
+  for (const [label, markets] of Object.entries(groups)) {
+    html += `<div class="markets-group">`;
+    html += `<div class="markets-group-title">${label}</div>`;
+    for (const m of markets) {
+      const bet = myBets[m.id];
+      const isLocked = !!m.locked;
+      const isSettled = !!m.settled;
+      const statusCls = isSettled ? 'settled' : (isLocked ? 'locked' : 'open');
+      const statusText = isSettled ? '✅ 已结算' : (isLocked ? '🔒 已封盘' : '🔓 开放中');
+      const cardCls = isSettled ? 'm-settled' : (isLocked ? 'm-locked' : '');
+      const poolText = m.pool > 0 ? `奖池 ${m.pool} 币` : '暂无下注';
+
+      html += `<div class="market-card ${cardCls}">
+        <div class="market-hdr">
+          <div class="market-title">${m.title}</div>
+          <div class="market-pool">${poolText}</div>
+          <div class="market-status ${statusCls}">${statusText}</div>
+        </div>
+        <div class="market-options">`;
+
+      const selOpt = selectedBetOption[m.id];
+
+      for (const opt of m.options) {
+        const isPicked = bet && bet.option_id === opt.id;
+        const isCorrect = isSettled && m.result_option_id === opt.id;
+        const isWrong = isSettled && isPicked && m.result_option_id !== opt.id;
+        const disabled = isLocked || isSettled;
+        const isSelecting = selOpt === opt.id && !bet;
+
+        let cls = '';
+        if (isCorrect && isPicked) cls = 'correct';
+        else if (isWrong) cls = 'wrong';
+        else if (isPicked) cls = 'picked';
+        else if (isSelecting) cls = 'picked';
+        if (disabled && !isPicked && !isCorrect) cls += ' m-disabled';
+
+        const click = disabled ? '' : `onclick="selectBetOption(${m.id},${opt.id})"`;
+        const amountTag = opt.total_amount > 0 ? `<span class="opt-amount">${opt.total_amount}币</span>` : '';
+        const oddsTag = opt.odds > 0 ? `<span class="opt-odds">×${opt.odds}</span>` : '';
+        const votesTag = opt.votes > 0 ? `<span class="opt-votes">${opt.votes}人</span>` : '';
+        html += `<div class="market-opt ${cls}" ${click}>${opt.label} ${amountTag}${oddsTag}${votesTag}</div>`;
+      }
+      html += '</div>';
+
+      if (!isLocked && !isSettled) {
+        if (bet) {
+          const pickedOpt = m.options.find(o => o.id === bet.option_id);
+          const payoutInfo = bet.settled ? (bet.won ? `赢得 ${bet.payout} 币` : '未命中') : '';
+          html += `<div class="market-bet-area">
+            <span class="bet-my">已下注 ${bet.amount} 币 → ${pickedOpt?.label || '?'}</span>
+            <span class="bet-info">点击其他选项可换选（金额不变），或重新输入金额</span>
+          </div>
+          <div class="market-bet-area">
+            <input type="number" id="bet-amt-${m.id}" placeholder="修改金额" min="1" value="${bet.amount}">
+            <button class="bet-btn" onclick="confirmBet(${m.id},${bet.option_id})">修改下注</button>
+          </div>`;
+        } else if (selOpt) {
+          const selOptLabel = m.options.find(o => o.id === selOpt)?.label || '';
+          html += `<div class="market-bet-area">
+            <span class="bet-info">选中：<strong style="color:var(--teal)">${selOptLabel}</strong>，输入下注金额：</span>
+            <input type="number" id="bet-amt-${m.id}" placeholder="下注金额" min="1">
+            <button class="bet-btn" onclick="confirmBet(${m.id},${selOpt})">确认下注</button>
+            <button style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:4px;cursor:pointer;font-size:12px" onclick="cancelBetSelect(${m.id})">取消</button>
+          </div>`;
+        }
+      } else if (isSettled && bet) {
+        const wonText = bet.won ? `<span style="color:var(--teal)">赢得 ${bet.payout} 币（净赚 ${bet.payout - bet.amount}）</span>` : `<span style="color:var(--red)">亏损 ${bet.amount} 币</span>`;
+        html += `<div class="market-bet-area"><span class="bet-info">下注 ${bet.amount} 币 → ${wonText}</span></div>`;
+      }
+
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  sec.innerHTML = html;
+}
+
+function selectBetOption(marketId, optionId) {
+  const bet = myBets[marketId];
+  if (bet) {
+    confirmBet(marketId, optionId);
+    return;
+  }
+  selectedBetOption[marketId] = optionId;
+  renderMarkets();
+}
+
+function cancelBetSelect(marketId) {
+  delete selectedBetOption[marketId];
+  renderMarkets();
+}
+
+async function confirmBet(marketId, optionId) {
+  const input = document.getElementById('bet-amt-' + marketId);
+  const amount = input ? parseInt(input.value) : 0;
+  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
+  try {
+    await api('/api/bet', { method: 'POST', body: { market_id: marketId, option_id: optionId, amount } });
+    delete selectedBetOption[marketId];
+    toast(`下注成功：${amount} 币`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+// ── Sortable tables ───────────────────────────────────────
+let sortState = {};
+
+function makeSortable(tableId) {
+  setTimeout(() => {
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const ths = table.querySelectorAll('thead th');
+    ths.forEach((th, colIdx) => {
+      th.style.cursor = 'pointer';
+      th.onclick = () => sortTable(tableId, colIdx);
+    });
+  }, 10);
+}
+
+function sortTable(tableId, colIdx) {
+  const table = document.getElementById(tableId);
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const ths = table.querySelectorAll('thead th');
+
+  const key = tableId + '_' + colIdx;
+  const asc = sortState[key] === 'asc' ? 'desc' : 'asc';
+  sortState[key] = asc;
+
+  ths.forEach(h => { const s = h.querySelector('.sort-arrow'); if (s) s.remove(); });
+  const arrow = document.createElement('span');
+  arrow.className = 'sort-arrow';
+  arrow.textContent = asc === 'asc' ? ' ▲' : ' ▼';
+  ths[colIdx].appendChild(arrow);
+
+  rows.sort((a, b) => {
+    let va = a.cells[colIdx]?.textContent.trim() || '';
+    let vb = b.cells[colIdx]?.textContent.trim() || '';
+    const na = parseFloat(va.replace(/[^0-9.\-]/g, ''));
+    const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ''));
+    if (!isNaN(na) && !isNaN(nb)) {
+      return asc === 'asc' ? na - nb : nb - na;
+    }
+    return asc === 'asc' ? va.localeCompare(vb, 'zh') : vb.localeCompare(va, 'zh');
+  });
+
+  rows.forEach(r => tbody.appendChild(r));
+}
+
+// ── Leaderboard ───────────────────────────────────────────
+let leaderboardData = [];
+
+function renderLeaderboard(lb) {
+  leaderboardData = lb;
+  const sec = document.getElementById('sec-leaderboard');
+  let html = '<table class="lb-table" id="tbl-lb"><thead><tr><th>排名</th><th>玩家</th><th>队伍</th><th>竞彩币</th><th>命中</th><th>预测数</th><th>命中率</th></tr></thead><tbody>';
+  lb.forEach((u, i) => {
+    const rc = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
+    const medal = i < 3 ? ['🥇','🥈','🥉'][i] : (i + 1);
+    const isMe = currentUser && u.id === currentUser.id;
+    const rateNum = u.settled > 0 ? Math.round(u.hits / u.settled * 100) : 0;
+    const rate = u.settled > 0 ? rateNum + '%' : '-';
+    html += `<tr class="${isMe ? 'me-row' : ''}">
+      <td class="${rc}">${medal}</td>
+      <td>${u.display}${isMe ? ' (我)' : ''}</td>
+      <td style="color:var(--text2);font-size:12px">${u.team || ''}</td>
+      <td class="${u.points >= 1000 ? 'positive' : 'negative'}">${u.points}</td>
+      <td>${u.hits}</td>
+      <td>${u.total_preds}</td>
+      <td>${rate}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  sec.innerHTML = html;
+  makeSortable('tbl-lb');
+}
+
+// ── Admin Panel ───────────────────────────────────────────
+let adminRecordPicks = {'3-0':new Set(),'3-1':new Set(),'3-2':new Set(),'0-3':new Set()};
+let adminData = null;
+
+async function renderAdmin() {
+  const sec = document.getElementById('sec-admin');
+  const allMatchIds = Object.keys(matchesData).sort((a,b) => {
+    const order = id => id.startsWith('SR') ? 0 : id.startsWith('W') || id.startsWith('L') || id === 'GF' ? 2 : 1;
+    return order(a) - order(b) || a.localeCompare(b);
+  });
+  const matchOpts = allMatchIds.map(id => `<option value="${id}">${id} ${matchesData[id].label||''}</option>`).join('');
+  const teamOpts = ALL_TEAMS.map(t => `<option value="${t}">${t}</option>`).join('');
+  const catOpts = ['3-0','3-1','3-2','0-3'].map(c => `<option value="${c}">${c}</option>`).join('');
+
+  let recordHtml = '';
+  for (const cat of ['3-0','3-1','3-2','0-3']) {
+    const picks = adminRecordPicks[cat];
+    recordHtml += `<div style="margin-bottom:8px"><strong style="color:var(--gold)">${cat}:</strong> `;
+    for (const t of ALL_TEAMS) {
+      const sel = picks.has(t);
+      recordHtml += `<span style="display:inline-block;margin:2px;padding:3px 8px;border-radius:4px;font-size:12px;cursor:pointer;
+        background:${sel ? 'rgba(10,207,151,.2)' : 'var(--bg2)'};border:1px solid ${sel ? 'var(--teal)' : 'var(--border)'};
+        color:${sel ? 'var(--teal)' : 'var(--text2)'}"
+        onclick="adminToggleRecord('${cat}','${t}')">${sel ? '✓ ' : ''}${t}</span>`;
+    }
+    recordHtml += '</div>';
+  }
+
+  sec.innerHTML = `
+    <div class="admin-tabs">
+      <button class="active" onclick="switchAdminTab(this,'adm-overview')">数据总览</button>
+      <button onclick="switchAdminTab(this,'adm-users')">用户明细</button>
+      <button onclick="switchAdminTab(this,'adm-match-preds')">淘汰赛预测</button>
+      <button onclick="switchAdminTab(this,'adm-record-preds')">8强预测</button>
+      <button onclick="switchAdminTab(this,'adm-markets')">盘口管理</button>
+      <button onclick="switchAdminTab(this,'adm-ops')">赛事操作</button>
+    </div>
+
+    <div class="admin-sub active" id="adm-overview">
+      <div class="admin-panel" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <h3 style="margin:0">封盘管理</h3>
+          <button class="admin-btn danger" onclick="adminLockAll(true)">全部封盘</button>
+          <button class="admin-btn primary" onclick="adminLockAll(false)">全部解封</button>
+        </div>
+        <div id="lock-controls"></div>
+      </div>
+      <div class="overview-cards" id="ov-cards"></div>
+      <div class="admin-panel"><h3>未参与竞猜的用户</h3><div id="ov-absent" class="scroll-box" style="max-height:260px"></div></div>
+    </div>
+
+    <div class="admin-sub" id="adm-users">
+      <div class="admin-panel"><h3>全员数据</h3>
+        <div class="scroll-box" id="ov-user-table"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-match-preds">
+      <div class="admin-panel"><h3>淘汰赛预测明细</h3>
+        <div class="admin-row" style="margin-bottom:10px">
+          <select id="adm-filter-match" onchange="filterMatchPreds()"><option value="">全部场次</option>${matchOpts}</select>
+        </div>
+        <div class="scroll-box" id="ov-match-preds"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-record-preds">
+      <div class="admin-panel"><h3>8强预测明细</h3>
+        <div class="admin-row" style="margin-bottom:10px">
+          <select id="adm-filter-cat" onchange="filterRecordPreds()"><option value="">全部分类</option>${catOpts}</select>
+        </div>
+        <div class="scroll-box" id="ov-record-preds"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-markets">
+      <div class="admin-panel">
+        <h3>创建新盘口</h3>
+        <div class="admin-row">
+          <input id="mk-label" placeholder="比赛标签（如：W1 卓慧玲队vs何博文队）" style="flex:1;min-width:200px">
+        </div>
+        <div class="admin-row">
+          <select id="mk-title-sel" style="min-width:200px" onchange="onMkTitleChange()">
+            <option value="第一滴血">第一滴血</option>
+            <option value="首座防御塔">首座防御塔</option>
+            <option value="首条暴君">首条暴君</option>
+            <option value="首条主宰">首条主宰</option>
+            <option value="本局MVP">本局MVP</option>
+            <option value="比赛是否超过15分钟">比赛是否超过15分钟</option>
+            <option value="比赛是否超过20分钟">比赛是否超过20分钟</option>
+            <option value="获胜队伍">获胜队伍</option>
+            <option value="__custom">自定义...</option>
+          </select>
+          <input id="mk-title-custom" placeholder="输入自定义标题" style="flex:1;display:none">
+        </div>
+        <div class="admin-row">
+          <input id="mk-options" placeholder="选项（逗号分隔，如：卓慧玲队,何博文队）" style="flex:1;min-width:300px">
+        </div>
+        <div class="admin-row">
+          <button class="admin-btn primary" onclick="adminCreateMarket()">创建盘口</button>
+        </div>
+        <div class="admin-msg" id="mk-msg"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>已有盘口</h3>
+        <div class="scroll-box" id="adm-market-list"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-ops">
+      <div class="admin-panel">
+        <h3>🔧 淘汰赛管理</h3>
+        <div class="admin-row">
+          <select id="adm-match" onchange="updateResultDropdown()">${matchOpts}</select>
+          <select id="adm-result"></select>
+          <span style="font-size:11px;color:var(--gold)">← 胜方</span>
+          <select id="adm-score1" style="width:50px"><option>0</option><option>1</option><option selected>2</option><option>3</option></select>
+          <span id="adm-score-colon" style="color:var(--text2)">:</span>
+          <select id="adm-score2" style="width:50px"><option selected>0</option><option>1</option><option>2</option><option>3</option></select>
+          <button class="admin-btn primary" onclick="adminSetResult()">录入结果</button>
+          <button class="admin-btn warn" onclick="adminLock(true)">封盘</button>
+          <button class="admin-btn danger" onclick="adminLock(false)">解封</button>
+        </div>
+        <div class="admin-msg" id="adm-msg1"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>🔧 更新对阵（淘汰赛填入实际队名）</h3>
+        <div class="admin-row">
+          <select id="adm-m2">${matchOpts}</select>
+          <select id="adm-t1"><option value="">队伍1</option>${teamOpts}</select>
+          <select id="adm-t2"><option value="">队伍2</option>${teamOpts}</select>
+          <button class="admin-btn primary" onclick="adminUpdateTeams()">更新对阵</button>
+        </div>
+        <div class="admin-msg" id="adm-msg2"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>🔧 瑞士轮战绩结算</h3>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">
+          点击选中每个分类的实际队伍，然后逐个结算。命中 3-0/0-3 +100 币，命中 3-2 +80 币，命中 3-1 +60 币。
+        </p>
+        ${recordHtml}
+        <div class="admin-row" style="margin-top:12px">
+          <select id="adm-settle-cat">${catOpts}</select>
+          <button class="admin-btn primary" onclick="adminSettleRecords()">结算该分类</button>
+        </div>
+        <div class="admin-msg" id="adm-msg3"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>🔧 用户密码管理</h3>
+        <div class="admin-row">
+          <input id="adm-reset-user" placeholder="输入英文名账号" style="flex:1;max-width:200px">
+          <button class="admin-btn warn" onclick="adminResetPwd()">重置为 000000</button>
+        </div>
+        <div class="admin-msg" id="adm-msg4"></div>
+      </div>
+    </div>`;
+
+  loadAdminData();
+  setTimeout(updateResultDropdown, 50);
+}
+
+function switchAdminTab(btn, tabId) {
+  btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.admin-sub').forEach(s => s.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+}
+
+async function loadAdminData() {
+  try {
+    const [ovRes, detailRes] = await Promise.all([
+      api('/api/admin/overview'),
+      api('/api/admin/all-predictions'),
+    ]);
+    adminData = { ...ovRes, ...detailRes };
+    renderOverview();
+    renderUserTable();
+    renderMatchPredsTable();
+    renderRecordPredsTable();
+    renderAdminMarketList();
+  } catch(e) { console.error(e); }
+}
+
+function renderOverview() {
+  const d = adminData;
+  renderLockControls();
+  document.getElementById('ov-cards').innerHTML = `
+    <div class="ov-card"><div class="ov-num">${d.totalUsers}</div><div class="ov-label">总选手</div></div>
+    <div class="ov-card"><div class="ov-num">${d.participatedUsers}</div><div class="ov-label">已参与竞猜</div></div>
+    <div class="ov-card"><div class="ov-num">${d.totalUsers - d.participatedUsers}</div><div class="ov-label">未参与</div></div>
+    <div class="ov-card"><div class="ov-num">${d.totalPredictions}</div><div class="ov-label">淘汰赛预测数</div></div>
+    <div class="ov-card"><div class="ov-num">${d.totalRecordPreds}</div><div class="ov-label">8强预测数</div></div>
+    <div class="ov-card"><div class="ov-num">${d.totalBets || 0}</div><div class="ov-label">盘口下注数</div></div>
+    <div class="ov-card"><div class="ov-num">${d.totalMarkets || 0}</div><div class="ov-label">自定义盘口</div></div>
+    <div class="ov-card"><div class="ov-num">${d.settledMatches}/${d.totalMatches}</div><div class="ov-label">已结算场次</div></div>`;
+
+  const absent = adminData.notParticipated;
+  if (absent.length === 0) {
+    document.getElementById('ov-absent').innerHTML = '<div class="no-data">所有人都已参与竞猜 👏</div>';
+  } else {
+    let h = '<table class="detail-table"><thead><tr><th>账号</th><th>姓名</th><th>队伍</th></tr></thead><tbody>';
+    absent.forEach(u => { h += `<tr><td>${u.username}</td><td>${u.display}</td><td>${u.team || '-'}</td></tr>`; });
+    h += '</tbody></table>';
+    document.getElementById('ov-absent').innerHTML = h;
+  }
+}
+
+function renderUserTable() {
+  const users = adminData.userSummary;
+  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>赛事预测</th><th>8强预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
+  users.forEach((u, i) => {
+    const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
+    h += `<tr>
+      <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${u.team || '-'}</td>
+      <td style="color:${u.points >= 1000 ? 'var(--teal)' : 'var(--red)'}">${u.points}</td>
+      <td>${u.match_preds}</td><td>${u.record_preds}</td>
+      <td class="won-yes">${u.hits}</td><td>${u.settled}</td><td>${rate}</td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('ov-user-table').innerHTML = h;
+  makeSortable('tbl-users');
+}
+
+function renderMatchPredsTable(filter) {
+  let preds = adminData.matchPreds;
+  if (filter) preds = preds.filter(p => p.match_id === filter);
+  if (preds.length === 0) {
+    document.getElementById('ov-match-preds').innerHTML = '<div class="no-data">暂无数据</div>';
+    return;
+  }
+  let h = '<table class="detail-table" id="tbl-match-preds"><thead><tr><th>场次</th><th>玩家</th><th>队伍</th><th>预测</th><th>下注</th><th>收益</th><th>状态</th><th>时间</th></tr></thead><tbody>';
+  preds.forEach(p => {
+    const status = !p.settled ? '⏳ 待结算' : (p.won ? '<span class="won-yes">✅ 命中</span>' : '<span class="won-no">❌ 未中</span>');
+    const payout = p.settled ? (p.won ? `<span class="won-yes">+${p.payout}</span>` : `<span class="won-no">-${p.amount}</span>`) : '-';
+    h += `<tr><td>${p.match_id}</td><td>${p.display}</td><td style="color:var(--text2)">${p.team || '-'}</td><td>${p.pick}</td><td style="color:var(--gold)">${p.amount || 0}</td><td>${payout}</td><td>${status}</td><td style="color:var(--text2)">${p.created_at || '-'}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('ov-match-preds').innerHTML = h;
+  makeSortable('tbl-match-preds');
+}
+function filterMatchPreds() { renderMatchPredsTable(document.getElementById('adm-filter-match').value); }
+
+function renderRecordPredsTable(filter) {
+  let preds = adminData.recordPreds;
+  if (filter) preds = preds.filter(p => p.category === filter);
+  if (preds.length === 0) {
+    document.getElementById('ov-record-preds').innerHTML = '<div class="no-data">暂无数据</div>';
+    return;
+  }
+  let h = '<table class="detail-table" id="tbl-record-preds"><thead><tr><th>分类</th><th>玩家</th><th>队伍</th><th>预测队伍</th><th>下注</th><th>收益</th><th>状态</th></tr></thead><tbody>';
+  preds.forEach(p => {
+    const status = !p.settled ? '⏳ 待结算' : (p.won ? '<span class="won-yes">✅ 命中</span>' : '<span class="won-no">❌ 未中</span>');
+    const payout = p.settled ? (p.won ? `<span class="won-yes">+${p.payout}</span>` : `<span class="won-no">-${p.amount}</span>`) : '-';
+    h += `<tr><td>${p.category}</td><td>${p.display}</td><td style="color:var(--text2)">${p.team || '-'}</td><td>${p.team_name}</td><td style="color:var(--gold)">${p.amount || 0}</td><td>${payout}</td><td>${status}</td></tr>`;
+  });
+  h += '</tbody></table>';
+  document.getElementById('ov-record-preds').innerHTML = h;
+  makeSortable('tbl-record-preds');
+}
+function filterRecordPreds() { renderRecordPredsTable(document.getElementById('adm-filter-cat').value); }
+
+function adminToggleRecord(cat, team) {
+  if (adminRecordPicks[cat].has(team)) adminRecordPicks[cat].delete(team);
+  else adminRecordPicks[cat].add(team);
+  renderAdmin();
+}
+
+function renderLockControls() {
+  const el = document.getElementById('lock-controls');
+  if (!el) return;
+  const cats = ['3-0','3-1','3-2','0-3'];
+  const matchIds = Object.keys(MATCH_TEAMS);
+
+  let html = '<div style="margin-bottom:10px"><strong style="color:var(--gold);font-size:13px">8强预测：</strong>';
+  for (const cat of cats) {
+    const locked = lockStatus.categories[cat];
+    html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px 3px 0;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;
+      background:${locked ? 'rgba(255,70,85,.12)' : 'rgba(10,207,151,.1)'};
+      border:1px solid ${locked ? 'var(--red)' : 'var(--teal)'};
+      color:${locked ? 'var(--red)' : 'var(--teal)'}"
+      onclick="adminToggleCatLock('${cat}',${!locked})">${locked ? '🔒' : '🔓'} ${cat}</span>`;
+  }
+  html += '</div>';
+
+  const swissIds = Object.keys(matchesData).filter(id => id.startsWith('SR')).sort();
+  if (swissIds.length) {
+    html += '<div style="margin-bottom:10px"><strong style="color:var(--gold);font-size:13px">瑞士轮：</strong>';
+    for (const mid of swissIds) {
+      const locked = lockStatus.matches[mid];
+      html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:3px 4px 3px 0;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;
+        background:${locked ? 'rgba(255,70,85,.12)' : 'rgba(10,207,151,.1)'};
+        border:1px solid ${locked ? 'var(--red)' : 'var(--teal)'};
+        color:${locked ? 'var(--red)' : 'var(--teal)'}"
+        onclick="adminToggleMatchLock('${mid}',${!locked})">${locked ? '🔒' : '🔓'} ${mid}</span>`;
+    }
+    html += '</div>';
+  }
+
+  html += '<div><strong style="color:var(--gold);font-size:13px">淘汰赛场次：</strong>';
+  for (const mid of matchIds) {
+    const locked = lockStatus.matches[mid];
+    html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:3px 4px 3px 0;padding:3px 8px;border-radius:4px;font-size:11px;cursor:pointer;
+      background:${locked ? 'rgba(255,70,85,.12)' : 'rgba(10,207,151,.1)'};
+      border:1px solid ${locked ? 'var(--red)' : 'var(--teal)'};
+      color:${locked ? 'var(--red)' : 'var(--teal)'}"
+      onclick="adminToggleMatchLock('${mid}',${!locked})">${locked ? '🔒' : '🔓'} ${mid}</span>`;
+  }
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+async function adminToggleCatLock(cat, locked) {
+  try {
+    await api('/api/admin/lock-category', { method: 'POST', body: { category: cat, locked } });
+    lockStatus.categories[cat] = locked;
+    renderLockControls();
+    renderGroups();
+    toast(locked ? `🔒 ${cat} 已封盘` : `🔓 ${cat} 已解封`);
+  } catch (e) { toast(e.message); }
+}
+
+async function adminToggleMatchLock(mid, locked) {
+  try {
+    await api('/api/admin/lock-match', { method: 'POST', body: { match_id: mid, locked } });
+    lockStatus.matches[mid] = locked;
+    if (matchesData[mid]) matchesData[mid].locked = locked ? 1 : 0;
+    renderLockControls();
+    renderBracket();
+    toast(locked ? `🔒 ${mid} 已封盘` : `🔓 ${mid} 已解封`);
+  } catch (e) { toast(e.message); }
+}
+
+async function adminLockAll(locked) {
+  try {
+    await api('/api/admin/lock-all', { method: 'POST', body: { locked } });
+    toast(locked ? '🔒 全部已封盘' : '🔓 全部已解封');
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+// ── Admin: market management ─────────────────────────────
+function onMkTitleChange() {
+  const sel = document.getElementById('mk-title-sel');
+  const custom = document.getElementById('mk-title-custom');
+  custom.style.display = sel.value === '__custom' ? '' : 'none';
+  if (sel.value !== '__custom') custom.value = '';
+}
+
+async function adminCreateMarket() {
+  const matchLabel = document.getElementById('mk-label').value.trim();
+  const selVal = document.getElementById('mk-title-sel').value;
+  const title = selVal === '__custom' ? document.getElementById('mk-title-custom').value.trim() : selVal;
+  const optStr = document.getElementById('mk-options').value.trim();
+  const msgEl = document.getElementById('mk-msg');
+  if (!title || !optStr) { msgEl.textContent = '❌ 请填写标题和选项'; return; }
+  const options = optStr.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  if (options.length < 2) { msgEl.textContent = '❌ 至少需要 2 个选项'; return; }
+  try {
+    await api('/api/admin/create-market', { method: 'POST', body: { title, match_label: matchLabel, options } });
+    msgEl.textContent = `✅ 盘口「${title}」已创建`;
+    document.getElementById('mk-title-sel').value = '第一滴血';
+    document.getElementById('mk-title-custom').value = '';
+    document.getElementById('mk-title-custom').style.display = 'none';
+    document.getElementById('mk-options').value = '';
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+function renderAdminMarketList() {
+  const el = document.getElementById('adm-market-list');
+  if (!el) return;
+  if (!marketsData.length) { el.innerHTML = '<div class="no-data">暂无盘口</div>'; return; }
+
+  let h = '<table class="detail-table"><thead><tr><th>ID</th><th>比赛</th><th>标题</th><th>选项（下注额 / 赔率）</th><th>奖池</th><th>状态</th><th>人数</th><th>操作</th></tr></thead><tbody>';
+  for (const m of marketsData) {
+    const totalBets = m.options.reduce((s, o) => s + o.votes, 0);
+    const status = m.settled ? '✅ 已结算' : (m.locked ? '🔒 封盘' : '🔓 开放');
+    const optLabels = m.options.map(o => {
+      const mark = m.result_option_id === o.id ? '✅' : '';
+      const oddsStr = o.odds > 0 ? ` ×${o.odds}` : '';
+      return `${mark}${o.label}(${o.total_amount}币${oddsStr})`;
+    }).join(' / ');
+
+    let actions = '';
+    if (!m.settled) {
+      if (m.locked) {
+        actions += `<button class="admin-btn primary" style="padding:3px 8px;font-size:11px" onclick="adminMarketLock(${m.id},false)">解封</button> `;
+      } else {
+        actions += `<button class="admin-btn warn" style="padding:3px 8px;font-size:11px" onclick="adminMarketLock(${m.id},true)">封盘</button> `;
+      }
+      const settleOpts = m.options.map(o => `<option value="${o.id}">${o.label}</option>`).join('');
+      actions += `<select id="mk-settle-${m.id}" style="padding:2px 4px;font-size:11px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:3px">${settleOpts}</select>`;
+      actions += `<button class="admin-btn primary" style="padding:3px 8px;font-size:11px;margin-left:2px" onclick="adminSettleMarket(${m.id})">结算</button> `;
+      actions += `<button class="admin-btn danger" style="padding:3px 8px;font-size:11px" onclick="adminDeleteMarket(${m.id})">删除</button>`;
+    }
+
+    h += `<tr>
+      <td>${m.id}</td>
+      <td style="color:var(--text2);font-size:11px">${m.match_label || '-'}</td>
+      <td>${m.title}</td>
+      <td style="font-size:11px">${optLabels}</td>
+      <td style="color:var(--gold)">${m.pool || 0}</td>
+      <td>${status}</td>
+      <td>${totalBets}</td>
+      <td style="white-space:nowrap">${actions}</td>
+    </tr>`;
+  }
+  h += '</tbody></table>';
+  el.innerHTML = h;
+}
+
+async function adminMarketLock(id, locked) {
+  try {
+    await api('/api/admin/lock-market', { method: 'POST', body: { market_id: id, locked } });
+    toast(locked ? '🔒 盘口已封盘' : '🔓 盘口已解封');
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+async function adminSettleMarket(id) {
+  const sel = document.getElementById('mk-settle-' + id);
+  if (!sel) return;
+  const optionId = parseInt(sel.value);
+  try {
+    const data = await api('/api/admin/settle-market', { method: 'POST', body: { market_id: id, option_id: optionId } });
+    toast(`✅ 盘口已结算，${data.settled} 条下注`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+async function adminDeleteMarket(id) {
+  if (!confirm('确认删除该盘口？所有下注将被清除。')) return;
+  try {
+    await api('/api/admin/delete-market', { method: 'POST', body: { market_id: id } });
+    toast('盘口已删除');
+    loadAllData();
+  } catch (e) { toast(e.message); }
+}
+
+function updateResultDropdown() {
+  const mid = document.getElementById('adm-match')?.value;
+  const sel = document.getElementById('adm-result');
+  const s1 = document.getElementById('adm-score1');
+  const s2 = document.getElementById('adm-score2');
+  if (!mid || !sel) return;
+  const m = matchesData[mid];
+  if (!m) return;
+  const teams = [m.team1, m.team2].filter(t => t && !t.match(/^[SWL]/));
+  const hasTeams = teams.length === 2;
+  if (!hasTeams) {
+    sel.innerHTML = '<option value="">（未设置队伍）</option>';
+  } else {
+    sel.innerHTML = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  }
+  if (s1) s1.style.display = hasTeams ? '' : 'none';
+  if (s2) s2.style.display = hasTeams ? '' : 'none';
+  const colon = document.getElementById('adm-score-colon');
+  if (colon) colon.style.display = hasTeams ? '' : 'none';
+}
+
+async function adminResetPwd() {
+  const username = document.getElementById('adm-reset-user').value.trim();
+  const msgEl = document.getElementById('adm-msg4');
+  if (!username) { msgEl.textContent = '❌ 请输入账号'; return; }
+  try {
+    await api('/api/admin/reset-password', { method: 'POST', body: { username } });
+    msgEl.textContent = `✅ ${username} 的密码已重置为 000000`;
+    document.getElementById('adm-reset-user').value = '';
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function adminSetResult() {
+  const mid = document.getElementById('adm-match').value;
+  const result = document.getElementById('adm-result').value;
+  if (!result) { document.getElementById('adm-msg1').textContent = '❌ 该场比赛还没有设置队伍'; return; }
+  const score = document.getElementById('adm-score1').value + ':' + document.getElementById('adm-score2').value;
+  try {
+    const data = await api('/api/admin/match-result', { method: 'POST', body: { match_id: mid, result, score } });
+    document.getElementById('adm-msg1').textContent = `✅ ${mid} 结果已录入，结算 ${data.settled} 条预测`;
+    await loadAllData();
+    jumpToMatchTab(mid);
+  } catch (e) { document.getElementById('adm-msg1').textContent = '❌ ' + e.message; }
+}
+
+async function adminLock(locked) {
+  const mid = document.getElementById('adm-match').value;
+  try {
+    await api('/api/admin/lock-match', { method: 'POST', body: { match_id: mid, locked } });
+    document.getElementById('adm-msg1').textContent = locked ? `🔒 ${mid} 已封盘` : `🔓 ${mid} 已解封`;
+    loadAllData();
+  } catch (e) { document.getElementById('adm-msg1').textContent = '❌ ' + e.message; }
+}
+
+function jumpToMatchTab(mid) {
+  let tab = 'bracket';
+  if (mid.startsWith('SR')) tab = 'swiss';
+  document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
+  const btn = document.querySelector(`#main-nav button[data-tab="${tab}"]`);
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + tab).classList.add('active');
+}
+
+async function adminUpdateTeams() {
+  const mid = document.getElementById('adm-m2').value;
+  const t1 = document.getElementById('adm-t1').value;
+  const t2 = document.getElementById('adm-t2').value;
+  try {
+    await api('/api/admin/update-match-teams', { method: 'POST', body: { match_id: mid, team1: t1, team2: t2 } });
+    document.getElementById('adm-msg2').textContent = `✅ ${mid} 对阵已更新`;
+    await loadAllData();
+    jumpToMatchTab(mid);
+  } catch (e) { document.getElementById('adm-msg2').textContent = '❌ ' + e.message; }
+}
+
+async function adminSettleRecords() {
+  const cat = document.getElementById('adm-settle-cat').value;
+  const teams = [...adminRecordPicks[cat]];
+  if (teams.length === 0) {
+    document.getElementById('adm-msg3').textContent = '❌ 请先选中该分类的实际队伍';
+    return;
+  }
+  try {
+    const data = await api('/api/admin/settle-records', { method: 'POST', body: { category: cat, teams } });
+    document.getElementById('adm-msg3').textContent = `✅ ${cat} 已结算 ${data.settled} 条预测，每命中 +${data.reward} 币`;
+    loadAllData();
+  } catch (e) { document.getElementById('adm-msg3').textContent = '❌ ' + e.message; }
+}
+
+// Enter key on login
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('login-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-pass').focus(); });
+
+// ── Init ──────────────────────────────────────────────────
+checkSession();
+</script>
+</body>
+</html>

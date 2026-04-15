@@ -1,0 +1,14 @@
+{
+  "name": "oracle-challenge",
+  "version": "1.0.0",
+  "description": "王者荣耀联赛竞猜系统",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.9.0",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0"
+  }
+}
