@@ -235,7 +235,7 @@ seedDB();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
-  secret: crypto.randomBytes(32).toString('hex'),
+  secret: 'honor-of-kings-quiz-2026-stella',
   resave: false,
   saveUninitialized: false,
   cookie: { maxAge: 7 * 24 * 3600 * 1000 }
@@ -427,6 +427,7 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
   if (!match) return res.status(404).json({ error: '比赛不存在' });
   if (!match.team1 || !match.team2) return res.status(400).json({ error: '该场比赛还没有设置队伍' });
+  if (match.result) return res.status(400).json({ error: '该场比赛已有结果，不可重复录入' });
   if (result !== match.team1 && result !== match.team2) return res.status(400).json({ error: `胜方必须是 ${match.team1} 或 ${match.team2}` });
 
   db.prepare('UPDATE matches SET result = ?, score = ?, locked = 1 WHERE id = ?')
@@ -526,7 +527,9 @@ app.get('/api/record-stats', (req, res) => {
     ORDER BY category, total_amount DESC
   `).all();
   const poolByCat = db.prepare(`
-    SELECT category, COALESCE(SUM(amount),0) as pool FROM record_predictions GROUP BY category
+    SELECT category, COALESCE(SUM(amount),0) as pool FROM (
+      SELECT category, user_id, MAX(amount) as amount FROM record_predictions GROUP BY category, user_id
+    ) GROUP BY category
   `).all();
   const pools = {};
   for (const p of poolByCat) pools[p.category] = p.pool;
