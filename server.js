@@ -98,6 +98,16 @@ db.exec(`
     FOREIGN KEY (option_id) REFERENCES market_options(id),
     UNIQUE(user_id, market_id)
   );
+  CREATE TABLE IF NOT EXISTS coin_logs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    delta      INTEGER NOT NULL,
+    balance    INTEGER NOT NULL,
+    reason     TEXT NOT NULL,
+    detail     TEXT DEFAULT '',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  );
   CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -241,6 +251,12 @@ app.use(session({
   cookie: { maxAge: 7 * 24 * 3600 * 1000 }
 }));
 
+function logCoins(userId, delta, reason, detail) {
+  db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(delta, userId);
+  const bal = db.prepare('SELECT points FROM users WHERE id = ?').get(userId).points;
+  db.prepare('INSERT INTO coin_logs (user_id, delta, balance, reason, detail) VALUES (?,?,?,?,?)').run(userId, delta, bal, reason, detail || '');
+}
+
 function requireAuth(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: '请先登录' });
   next();
@@ -303,7 +319,7 @@ app.post('/api/checkin', requireAuth, (req, res) => {
   if (existing) return res.status(400).json({ error: '今天已经签过到了' });
 
   db.prepare('INSERT INTO checkins (user_id, day) VALUES (?, ?)').run(req.session.userId, today);
-  db.prepare('UPDATE users SET points = points + 100 WHERE id = ?').run(req.session.userId);
+  logCoins(req.session.userId, 100, '签到');
   const total = db.prepare('SELECT COUNT(*) as c FROM checkins WHERE user_id = ?').get(req.session.userId).c;
   res.json({ ok: true, totalDays: total });
 });
@@ -330,7 +346,7 @@ app.post('/api/predict', requireAuth, (req, res) => {
   if (action === 'cancel') {
     if (!existing) return res.status(400).json({ error: '没有预测记录' });
     const tx = db.transaction(() => {
-      db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(existing.amount, req.session.userId);
+      logCoins(req.session.userId, existing.amount, '撤回预测', match_id);
       db.prepare('DELETE FROM predictions WHERE id = ?').run(existing.id);
     });
     tx();
@@ -347,9 +363,9 @@ app.post('/api/predict', requireAuth, (req, res) => {
 
   const tx = db.transaction(() => {
     if (existing) {
-      db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(existing.amount, req.session.userId);
+      logCoins(req.session.userId, existing.amount, '退回旧注', match_id);
     }
-    db.prepare('UPDATE users SET points = points - ? WHERE id = ?').run(betAmount, req.session.userId);
+    logCoins(req.session.userId, -betAmount, '比赛下注', `${match_id} → ${pick}`);
     db.prepare(`INSERT INTO predictions (user_id, match_id, pick, amount) VALUES (?, ?, ?, ?)
       ON CONFLICT(user_id, match_id) DO UPDATE SET pick = excluded.pick, amount = excluded.amount, created_at = datetime('now','localtime')`)
       .run(req.session.userId, match_id, pick, betAmount);
@@ -371,7 +387,7 @@ app.post('/api/predict-record', requireAuth, (req, res) => {
     const oldRows = db.prepare('SELECT * FROM record_predictions WHERE user_id = ? AND category = ?').all(req.session.userId, category);
     const oldAmount = oldRows.length > 0 ? oldRows[0].amount : 0;
     const tx = db.transaction(() => {
-      if (oldAmount > 0) db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(oldAmount, req.session.userId);
+      if (oldAmount > 0) logCoins(req.session.userId, oldAmount, '撤回8强预测', category);
       db.prepare('DELETE FROM record_predictions WHERE user_id = ? AND category = ?').run(req.session.userId, category);
     });
     tx();
@@ -393,9 +409,9 @@ app.post('/api/predict-record', requireAuth, (req, res) => {
   if (betAmount > available) return res.status(400).json({ error: `竞彩币不足（可用 ${available}）` });
 
   const tx = db.transaction(() => {
-    if (oldAmount > 0) db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(oldAmount, req.session.userId);
+    if (oldAmount > 0) logCoins(req.session.userId, oldAmount, '退回旧注', `8强${category}`);
     db.prepare('DELETE FROM record_predictions WHERE user_id = ? AND category = ?').run(req.session.userId, category);
-    db.prepare('UPDATE users SET points = points - ? WHERE id = ?').run(betAmount, req.session.userId);
+    logCoins(req.session.userId, -betAmount, '8强下注', `${category} → ${teams.join(',')}`);
     const ins = db.prepare('INSERT INTO record_predictions (user_id, category, team_name, amount) VALUES (?, ?, ?, ?)');
     for (const t of teams) ins.run(req.session.userId, category, t, betAmount);
   });
@@ -419,6 +435,43 @@ app.get('/api/matches', (req, res) => {
   res.json({ matches: result });
 });
 
+// ── Undo helpers ─────────────────────────────────────────
+function undoMatchResult(matchId) {
+  const preds = db.prepare('SELECT * FROM predictions WHERE match_id = ? AND settled = 1').all(matchId);
+  const tx = db.transaction(() => {
+    for (const p of preds) {
+      if (p.won && p.payout > 0) {
+        logCoins(p.user_id, -p.payout, '撤销结算-扣回', matchId);
+      }
+      if (!p.won) {
+        logCoins(p.user_id, p.amount, '撤销结算-退回', matchId);
+      }
+    }
+    db.prepare('UPDATE predictions SET settled = 0, won = 0, payout = 0 WHERE match_id = ? AND settled = 1').run(matchId);
+    db.prepare("UPDATE matches SET result = NULL, score = '', locked = 1 WHERE id = ?").run(matchId);
+  });
+  tx();
+  return preds.length;
+}
+
+function undoSettleMarket(marketId) {
+  const bets = db.prepare('SELECT * FROM bets WHERE market_id = ? AND settled = 1').all(marketId);
+  const tx = db.transaction(() => {
+    for (const b of bets) {
+      if (b.won && b.payout > 0) {
+        logCoins(b.user_id, -b.payout, '撤销盘口-扣回', `盘口${marketId}`);
+      }
+      if (!b.won) {
+        logCoins(b.user_id, b.amount, '撤销盘口-退回', `盘口${marketId}`);
+      }
+    }
+    db.prepare('UPDATE bets SET settled = 0, won = 0, payout = 0 WHERE market_id = ? AND settled = 1').run(marketId);
+    db.prepare('UPDATE markets SET settled = 0, result_option_id = NULL, locked = 1 WHERE id = ?').run(marketId);
+  });
+  tx();
+  return bets.length;
+}
+
 // ── Admin: set result / lock ──────────────────────────────
 app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
   const { match_id, result, score } = req.body;
@@ -427,8 +480,11 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
   if (!match) return res.status(404).json({ error: '比赛不存在' });
   if (!match.team1 || !match.team2) return res.status(400).json({ error: '该场比赛还没有设置队伍' });
-  if (match.result) return res.status(400).json({ error: '该场比赛已有结果，不可重复录入' });
   if (result !== match.team1 && result !== match.team2) return res.status(400).json({ error: `胜方必须是 ${match.team1} 或 ${match.team2}` });
+
+  if (match.result) {
+    undoMatchResult(match_id);
+  }
 
   db.prepare('UPDATE matches SET result = ?, score = ?, locked = 1 WHERE id = ?')
     .run(result, score || '', match_id);
@@ -439,7 +495,6 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
   const winnerTotal = winners.reduce((s, p) => s + p.amount, 0);
 
   const updatePred = db.prepare('UPDATE predictions SET settled = 1, won = ?, payout = ? WHERE id = ?');
-  const addPoints = db.prepare('UPDATE users SET points = points + ? WHERE id = ?');
 
   const tx = db.transaction(() => {
     for (const p of preds) {
@@ -447,27 +502,30 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
       if (isWinner && winnerTotal > 0) {
         const payout = Math.floor(pool * p.amount / winnerTotal);
         updatePred.run(1, payout, p.id);
-        addPoints.run(payout, p.user_id);
+        logCoins(p.user_id, payout, '比赛命中', `${match_id} +${payout}`);
       } else {
         updatePred.run(0, 0, p.id);
-      }
-    }
-    if (winners.length === 0 && pool > 0) {
-      for (const p of preds) {
-        addPoints.run(p.amount, p.user_id);
-        db.prepare('UPDATE predictions SET payout = ? WHERE id = ?').run(p.amount, p.id);
       }
     }
   });
   tx();
 
-  res.json({ ok: true, settled: preds.length, pool });
+  res.json({ ok: true, settled: preds.length, pool, winners: winners.length });
 });
 
 app.post('/api/admin/lock-match', requireAuth, requireAdmin, (req, res) => {
   const { match_id, locked } = req.body;
   db.prepare('UPDATE matches SET locked = ? WHERE id = ?').run(locked ? 1 : 0, match_id);
   res.json({ ok: true });
+});
+
+app.post('/api/admin/undo-match-result', requireAuth, requireAdmin, (req, res) => {
+  const { match_id } = req.body;
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
+  if (!match) return res.status(404).json({ error: '比赛不存在' });
+  if (!match.result) return res.status(400).json({ error: '该场比赛没有结果可撤销' });
+  const count = undoMatchResult(match_id);
+  res.json({ ok: true, undone: count });
 });
 
 app.post('/api/admin/settle-records', requireAuth, requireAdmin, (req, res) => {
@@ -492,7 +550,6 @@ app.post('/api/admin/settle-records', requireAuth, requireAdmin, (req, res) => {
   const winnerTotal = Object.values(winnerUsers).reduce((s, u) => s + u.amount, 0);
 
   const updatePred = db.prepare('UPDATE record_predictions SET settled = 1, won = ?, payout = ? WHERE id = ?');
-  const addPoints = db.prepare('UPDATE users SET points = points + ? WHERE id = ?');
 
   let settledCount = 0;
   const tx = db.transaction(() => {
@@ -504,15 +561,7 @@ app.post('/api/admin/settle-records', requireAuth, requireAdmin, (req, res) => {
         updatePred.run(rowWon, isWinner ? payout : 0, row.id);
         settledCount++;
       }
-      if (isWinner && payout > 0) addPoints.run(payout, parseInt(uid));
-    }
-    if (Object.keys(winnerUsers).length === 0 && pool > 0) {
-      for (const [uid, u] of Object.entries(userBets)) {
-        addPoints.run(u.amount, parseInt(uid));
-        for (const row of u.rows) {
-          db.prepare('UPDATE record_predictions SET payout = ? WHERE id = ?').run(u.amount, row.id);
-        }
-      }
+      if (isWinner && payout > 0) logCoins(parseInt(uid), payout, '8强命中', `${category} +${payout}`);
     }
   });
   tx();
@@ -591,9 +640,9 @@ app.post('/api/bet', requireAuth, (req, res) => {
 
   const tx = db.transaction(() => {
     if (existing) {
-      db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(existing.amount, req.session.userId);
+      logCoins(req.session.userId, existing.amount, '退回旧注', `盘口${market_id}`);
     }
-    db.prepare('UPDATE users SET points = points - ? WHERE id = ?').run(betAmount, req.session.userId);
+    logCoins(req.session.userId, -betAmount, '盘口下注', `盘口${market_id}`);
     db.prepare(`INSERT INTO bets (user_id, market_id, option_id, amount) VALUES (?, ?, ?, ?)
       ON CONFLICT(user_id, market_id) DO UPDATE SET option_id = excluded.option_id, amount = excluded.amount, created_at = datetime('now','localtime')`)
       .run(req.session.userId, market_id, option_id, betAmount);
@@ -641,7 +690,6 @@ app.post('/api/admin/settle-market', requireAuth, requireAdmin, (req, res) => {
   const winnerTotal = winners.reduce((s, b) => s + b.amount, 0);
 
   const updateBet = db.prepare('UPDATE bets SET settled = 1, won = ?, payout = ? WHERE id = ?');
-  const addPoints = db.prepare('UPDATE users SET points = points + ? WHERE id = ?');
 
   let settledCount = 0;
   const tx = db.transaction(() => {
@@ -652,23 +700,26 @@ app.post('/api/admin/settle-market', requireAuth, requireAdmin, (req, res) => {
       if (isWinner && winnerTotal > 0) {
         const payout = Math.floor(pool * b.amount / winnerTotal);
         updateBet.run(1, payout, b.id);
-        addPoints.run(payout, b.user_id);
+        logCoins(b.user_id, payout, '盘口命中', `盘口${market_id} +${payout}`);
       } else {
         updateBet.run(0, 0, b.id);
       }
       settledCount++;
     }
 
-    if (winners.length === 0 && pool > 0) {
-      for (const b of betsAll) {
-        addPoints.run(b.amount, b.user_id);
-        db.prepare('UPDATE bets SET payout = ? WHERE id = ?').run(b.amount, b.id);
-      }
-    }
   });
   tx();
 
   res.json({ ok: true, settled: settledCount, pool, winnerTotal, winners: winners.length });
+});
+
+app.post('/api/admin/undo-settle-market', requireAuth, requireAdmin, (req, res) => {
+  const { market_id } = req.body;
+  const market = db.prepare('SELECT * FROM markets WHERE id = ?').get(market_id);
+  if (!market) return res.status(404).json({ error: '盘口不存在' });
+  if (!market.settled) return res.status(400).json({ error: '该盘口未结算，无需撤销' });
+  const count = undoSettleMarket(market_id);
+  res.json({ ok: true, undone: count });
 });
 
 app.post('/api/admin/delete-market', requireAuth, requireAdmin, (req, res) => {
@@ -678,11 +729,10 @@ app.post('/api/admin/delete-market', requireAuth, requireAdmin, (req, res) => {
   if (market.settled) return res.status(400).json({ error: '已结算的盘口不可删除' });
 
   const betsAll = db.prepare('SELECT * FROM bets WHERE market_id = ?').all(market_id);
-  const addPoints = db.prepare('UPDATE users SET points = points + ? WHERE id = ?');
 
   const tx = db.transaction(() => {
     for (const b of betsAll) {
-      if (b.amount > 0) addPoints.run(b.amount, b.user_id);
+      if (b.amount > 0) logCoins(b.user_id, b.amount, '盘口删除退回', `盘口${market_id}`);
     }
     db.prepare('DELETE FROM bets WHERE market_id = ?').run(market_id);
     db.prepare('DELETE FROM market_options WHERE market_id = ?').run(market_id);
@@ -777,7 +827,7 @@ app.post('/api/admin/update-match-teams', requireAuth, requireAdmin, (req, res) 
       db.prepare("UPDATE matches SET result = NULL, score = '', locked = 0 WHERE id = ?").run(match_id);
       const bets = db.prepare('SELECT * FROM predictions WHERE match_id = ? AND settled = 0').all(match_id);
       for (const b of bets) {
-        db.prepare('UPDATE users SET points = points + ? WHERE id = ?').run(b.amount, b.user_id);
+        logCoins(b.user_id, b.amount, '对阵清除退回', match_id);
       }
       db.prepare('DELETE FROM predictions WHERE match_id = ? AND settled = 0').run(match_id);
     }
@@ -814,6 +864,23 @@ app.post('/api/admin/lock-all', requireAuth, requireAdmin, (req, res) => {
   });
   tx();
   res.json({ ok: true });
+});
+
+// ── Coin logs ─────────────────────────────────────────────
+app.get('/api/coin-logs', requireAuth, (req, res) => {
+  const logs = db.prepare('SELECT * FROM coin_logs WHERE user_id = ? ORDER BY id DESC LIMIT 100').all(req.session.userId);
+  res.json({ logs });
+});
+
+app.get('/api/admin/coin-logs', requireAuth, requireAdmin, (req, res) => {
+  const { user_id } = req.query;
+  let logs;
+  if (user_id) {
+    logs = db.prepare('SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id WHERE c.user_id = ? ORDER BY c.id DESC LIMIT 200').all(parseInt(user_id));
+  } else {
+    logs = db.prepare('SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id ORDER BY c.id DESC LIMIT 500').all();
+  }
+  res.json({ logs });
 });
 
 // ── Admin: reset password ─────────────────────────────────
