@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>王者荣耀策划联赛竞猜</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -554,8 +557,11 @@ ALL_TEAMS_DATA.forEach(t => { nameMapNewToOld[t.name] = t.oldName; nameMapOldToN
 
 function displayTeamName(dbName) {
   if (!dbName) return dbName;
-  if (useNewTeamNames) return dbName;
-  return nameMapNewToOld[dbName] || dbName;
+  if (useNewTeamNames) {
+    return nameMapOldToNew[dbName] || dbName;
+  } else {
+    return nameMapNewToOld[dbName] || nameMapNewToOld[nameMapOldToNew[dbName]] || dbName;
+  }
 }
 
 const BRACKET_DEF = {
@@ -1604,7 +1610,7 @@ function renderOverview() {
     document.getElementById('ov-absent').innerHTML = '<div class="no-data">所有人都已参与竞猜 👏</div>';
   } else {
     let h = '<table class="detail-table"><thead><tr><th>账号</th><th>姓名</th><th>队伍</th></tr></thead><tbody>';
-    absent.forEach(u => { h += `<tr><td>${u.username}</td><td>${u.display}</td><td>${u.team || '-'}</td></tr>`; });
+    absent.forEach(u => { h += `<tr><td>${u.username}</td><td>${u.display}</td><td>${displayTeamName(u.team) || '-'}</td></tr>`; });
     h += '</tbody></table>';
     document.getElementById('ov-absent').innerHTML = h;
   }
@@ -1616,7 +1622,7 @@ function renderUserTable() {
   users.forEach((u, i) => {
     const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
     h += `<tr>
-      <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${u.team || '-'}</td>
+      <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${displayTeamName(u.team) || '-'}</td>
       <td style="color:${u.points >= 1000 ? 'var(--teal)' : 'var(--red)'}">${u.points}</td>
       <td>${u.match_preds}</td><td>${u.record_preds}</td>
       <td class="won-yes">${u.hits}</td><td>${u.settled}</td><td>${rate}</td>
