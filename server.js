@@ -866,6 +866,35 @@ app.post('/api/admin/lock-all', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Clear unsettled ───────────────────────────────────────
+app.post('/api/admin/clear-unsettled', requireAuth, requireAdmin, (req, res) => {
+  let refunded = 0;
+  const tx = db.transaction(() => {
+    const preds = db.prepare('SELECT * FROM predictions WHERE settled = 0').all();
+    for (const p of preds) {
+      logCoins(p.user_id, p.amount, '管理员清除退回', p.match_id);
+      refunded++;
+    }
+    db.prepare('DELETE FROM predictions WHERE settled = 0').run();
+
+    const recUsers = db.prepare('SELECT user_id, category, MAX(amount) as amount FROM record_predictions WHERE settled = 0 GROUP BY user_id, category').all();
+    for (const r of recUsers) {
+      logCoins(r.user_id, r.amount, '管理员清除退回', `8强${r.category}`);
+      refunded++;
+    }
+    db.prepare('DELETE FROM record_predictions WHERE settled = 0').run();
+
+    const bets = db.prepare('SELECT * FROM bets WHERE settled = 0').all();
+    for (const b of bets) {
+      logCoins(b.user_id, b.amount, '管理员清除退回', `盘口${b.market_id}`);
+      refunded++;
+    }
+    db.prepare('DELETE FROM bets WHERE settled = 0').run();
+  });
+  tx();
+  res.json({ ok: true, refunded });
+});
+
 // ── Coin logs ─────────────────────────────────────────────
 app.get('/api/coin-logs', requireAuth, (req, res) => {
   const logs = db.prepare('SELECT * FROM coin_logs WHERE user_id = ? ORDER BY id DESC LIMIT 100').all(req.session.userId);

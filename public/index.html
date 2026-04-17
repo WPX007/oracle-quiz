@@ -1524,6 +1524,12 @@ async function renderAdmin() {
         </div>
         <div class="admin-msg" id="adm-msg4"></div>
       </div>
+      <div class="admin-panel">
+        <h3>🔧 清除所有未结算预测（退还竞彩币）</h3>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">清除所有未结算的比赛预测、8强预测、盘口下注，并退还对应竞彩币。已结算的不受影响。</p>
+        <button class="admin-btn danger" onclick="adminClearUnsettled()">一键清除并退币</button>
+        <div class="admin-msg" id="adm-msg5"></div>
+      </div>
     </div>`;
 
   loadAdminData();
@@ -1926,6 +1932,15 @@ async function adminResetPwd() {
     msgEl.textContent = `✅ ${username} 的密码已重置为 000000`;
     document.getElementById('adm-reset-user').value = '';
   } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function adminClearUnsettled() {
+  if (!confirm('确认清除所有未结算预测？竞彩币将全部退还给用户。')) return;
+  try {
+    const data = await api('/api/admin/clear-unsettled', { method: 'POST' });
+    document.getElementById('adm-msg5').textContent = `✅ 已清除并退还 ${data.refunded} 笔下注`;
+    loadAllData();
+  } catch (e) { document.getElementById('adm-msg5').textContent = '❌ ' + e.message; }
 }
 
 async function showMyLogs() {
