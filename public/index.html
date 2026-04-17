@@ -457,6 +457,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
         <div class="user-name" id="hdr-name"></div>
         <div class="user-team" id="hdr-team"></div>
       </div>
+      <button onclick="toggleTeamNames()" id="name-switch" style="font-size:10px"></button>
       <button onclick="doLogout()">退出</button>
     </div>
   </div>
@@ -518,32 +519,44 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 // ── Constants ─────────────────────────────────────────────
 const GROUPS = {
   A:[
-    {name:'卓慧玲队',seed:1,members:['卓慧玲','李宝琪','杨蔚庆','曾沛源','郝奕博']},
-    {name:'钟文迪队',seed:8,members:['钟文迪','王鹏森','刘宇骅','朱羽豪','刘应池']},
-    {name:'谭章斌队',seed:9,members:['谭章斌','赵左臣','晏晨熙','庞汉雄','贺江舟']},
-    {name:'何博文队',seed:16,members:['何博文','王稼钰','龙柯宇','宋天磊','张岱']},
+    {name:'灵宝真好养',oldName:'卓慧玲队',seed:1,members:['卓慧玲','李宝琪','杨蔚庆','曾沛源','郝奕博']},
+    {name:'冷静稳健运营',oldName:'钟文迪队',seed:8,members:['钟文迪','王鹏森','刘宇骅','朱羽豪','刘应池']},
+    {name:'守感来了',oldName:'谭章斌队',seed:9,members:['谭章斌','赵左臣','晏晨熙','庞汉雄','贺江舟']},
+    {name:'通天岱丶何龙王',oldName:'何博文队',seed:16,members:['何博文','王稼钰','龙柯宇','宋天磊','张岱']},
   ],
   B:[
-    {name:'李仁杰队',seed:2,members:['李仁杰','于筱薇','俞承驰','毛竹','向牧']},
-    {name:'张书嘉队',seed:7,members:['张书嘉','王铭宇','陈均伟','李浩','于智鑫']},
-    {name:'何怡君队',seed:10,members:['何怡君','蒋佳志','苏宇','贾宇新','王强']},
-    {name:'张益帆队',seed:15,members:['张益帆','周金滔','刘培俊','苑韬','童颜']},
+    {name:'幕后黑手',oldName:'李仁杰队',seed:2,members:['李仁杰','于筱薇','俞承驰','毛竹','向牧']},
+    {name:'好想打五排',oldName:'张书嘉队',seed:7,members:['张书嘉','王铭宇','陈均伟','李浩','于智鑫']},
+    {name:'明牌四保一',oldName:'何怡君队',seed:10,members:['何怡君','蒋佳志','苏宇','贾宇新','王强']},
+    {name:'紧急需求',oldName:'张益帆队',seed:15,members:['张益帆','周金滔','刘培俊','苑韬','童颜']},
   ],
   C:[
-    {name:'左天白队',seed:3,members:['左天白','吴亭瑶','高磊','罗凯','何昱辰']},
-    {name:'郑宇队',seed:6,members:['郑宇','杨程博','郭琦','李丁','张晋']},
-    {name:'林辉河队',seed:11,members:['林辉河','王旭东','修北辰','张斯铭','周靖奇']},
-    {name:'秦祥龙队',seed:14,members:['秦祥龙','梁辰','李石','吴马倩男','杨栋']},
+    {name:'签运爆表',oldName:'左天白队',seed:3,members:['左天白','吴亭瑶','高磊','罗凯','何昱辰']},
+    {name:'你看的懂吗',oldName:'郑宇队',seed:6,members:['郑宇','杨程博','郭琦','李丁','张晋']},
+    {name:'教练带的兵',oldName:'林辉河队',seed:11,members:['林辉河','王旭东','修北辰','张斯铭','周靖奇']},
+    {name:'卷起来好吗',oldName:'秦祥龙队',seed:14,members:['秦祥龙','梁辰','李石','吴马倩男','杨栋']},
   ],
   D:[
-    {name:'马浩队',seed:4,members:['马浩','赵宇涵','毛于升','张嘉璐','丁亮']},
-    {name:'高世豪队',seed:5,members:['高世豪','杨润泽','张嘉予','乔榛','刘景晟']},
-    {name:'温鹏祥队',seed:12,members:['温鹏祥','黄俊','陈磊','邓淦','孙少文']},
-    {name:'李思鹏队',seed:13,members:['李思鹏','严云天','付启煜','曹克勤','周萌']},
+    {name:'带头冲锋',oldName:'马浩队',seed:4,members:['马浩','赵宇涵','毛于升','张嘉璐','丁亮']},
+    {name:'男模团',oldName:'高世豪队',seed:5,members:['高世豪','杨润泽','张嘉予','乔榛','刘景晟']},
+    {name:'温+宝',oldName:'温鹏祥队',seed:12,members:['温鹏祥','黄俊','陈磊','邓淦','孙少文']},
+    {name:'数值溢出',oldName:'李思鹏队',seed:13,members:['李思鹏','严云天','付启煜','曹克勤','周萌']},
   ],
 };
 
-const ALL_TEAMS = Object.values(GROUPS).flat().map(t=>t.name);
+let useNewTeamNames = true;
+const ALL_TEAMS_DATA = Object.values(GROUPS).flat();
+let ALL_TEAMS = ALL_TEAMS_DATA.map(t => t.name);
+
+const nameMapNewToOld = {};
+const nameMapOldToNew = {};
+ALL_TEAMS_DATA.forEach(t => { nameMapNewToOld[t.name] = t.oldName; nameMapOldToNew[t.oldName] = t.name; });
+
+function displayTeamName(dbName) {
+  if (!dbName) return dbName;
+  if (useNewTeamNames) return dbName;
+  return nameMapNewToOld[dbName] || dbName;
+}
 
 const BRACKET_DEF = {
   winners: [
@@ -637,7 +650,8 @@ function enterApp() {
   document.getElementById('login-page').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('hdr-name').textContent = currentUser.display;
-  document.getElementById('hdr-team').textContent = currentUser.team || '';
+  document.getElementById('hdr-team').textContent = displayTeamName(currentUser.team) || '';
+  document.getElementById('name-switch').textContent = useNewTeamNames ? '切换旧队名' : '切换新队名';
   if (currentUser.is_admin) document.getElementById('admin-tab').style.display = '';
   loadAllData();
 }
@@ -771,8 +785,10 @@ function renderGroups() {
 
       const canClick = isSelectMode && !isMine && (isSelecting || selCount < rc.max);
       const click = canClick ? `onclick="toggleRecSelect('${rc.cat}','${t}')"` : '';
+      const tData = ALL_TEAMS_DATA.find(x => x.name === t || x.oldName === t);
+      const displayName = tData ? (useNewTeamNames ? tData.name : tData.oldName) : t;
       const votesTag = st.picks > 0 ? `<span class="opt-votes">${st.picks}人 ${st.total}币</span>` : '';
-      html += `<div class="team-chip ${cls}" ${click}>${t} ${votesTag}</div>`;
+      html += `<div class="team-chip ${cls}" ${click}>${displayName} ${votesTag}</div>`;
     }
     html += '</div>';
 
@@ -786,7 +802,7 @@ function renderGroups() {
       </div>`;
     } else if (hasBet && !isSettled && !catLocked) {
       html += `<div class="market-bet-area">
-        <span class="bet-my">已下注 ${myAmount} 币 → ${myTeams.join('、')}</span>
+        <span class="bet-my">已下注 ${myAmount} 币 → ${myTeams.map(displayTeamName).join('、')}</span>
         <button style="padding:5px 12px;border:1px solid var(--border);background:transparent;color:var(--red);border-radius:4px;cursor:pointer;font-size:12px" onclick="removeRecordBet('${rc.cat}')">撤回（退还 ${myAmount} 币）</button>
       </div>`;
     } else if (hasBet && isSettled) {
@@ -797,7 +813,7 @@ function renderGroups() {
         ? `<span style="color:var(--teal)">赢得 ${payout} 币（净赚 ${payout - myAmount}）</span>`
         : `<span style="color:var(--red)">亏损 ${myAmount} 币</span>`;
       html += `<div class="market-bet-area">
-        <span class="bet-info">下注 ${myAmount} 币 → ${myTeams.join('、')} → ${resultText}</span>
+        <span class="bet-info">下注 ${myAmount} 币 → ${myTeams.map(displayTeamName).join('、')} → ${resultText}</span>
       </div>`;
     }
 
@@ -993,8 +1009,9 @@ function makeMatchCard(mid) {
       if (locked || result) cls += ' disabled';
     }
 
+    const dName = displayTeamName(t.name);
     html += `<div class="match-slot ${cls}" ${clickAttr}>
-      <div class="team-name ${nameCls}">${t.name}${winMark}</div>
+      <div class="team-name ${nameCls}">${dName}${winMark}</div>
       ${isFinished ? `${teamScore}<span style="font-size:9px;color:var(--text2);margin-left:2px">${betInfo}</span>${oddsTag}` : `${betInfo}${oddsTag}`}
     </div>`;
   });
@@ -1059,7 +1076,7 @@ async function confirmMatchPick(mid) {
   try {
     await api('/api/predict', { method: 'POST', body: { match_id: mid, pick: team, amount } });
     delete pendingMatchPick[mid];
-    toast(`预测 ${mid}: ${team}（${amount} 币）`);
+    toast(`预测 ${mid}: ${displayTeamName(team)}（${amount} 币）`);
     loadAllData();
   } catch (e) { toast(e.message); }
 }
@@ -1345,7 +1362,7 @@ function renderLeaderboard(lb) {
     html += `<tr class="${isMe ? 'me-row' : ''}">
       <td class="${rc}">${medal}</td>
       <td>${u.display}${isMe ? ' (我)' : ''}</td>
-      <td style="color:var(--text2);font-size:12px">${u.team || ''}</td>
+      <td style="color:var(--text2);font-size:12px">${displayTeamName(u.team) || ''}</td>
       <td class="${u.points >= 1000 ? 'positive' : 'negative'}">${u.points}</td>
       <td>${u.hits}</td>
       <td>${u.total_preds}</td>
@@ -1398,6 +1415,10 @@ async function renderAdmin() {
 
     <div class="admin-sub active" id="adm-overview">
       <div class="admin-panel" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <h3 style="margin:0">队名显示</h3>
+          <button class="admin-btn primary" style="padding:4px 12px;font-size:11px" id="name-toggle-btn" onclick="toggleTeamNames()"></button>
+        </div>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
           <h3 style="margin:0">封盘管理</h3>
           <button class="admin-btn danger" onclick="adminLockAll(true)">全部封盘</button>
@@ -1565,6 +1586,8 @@ async function loadAdminData() {
 
 function renderOverview() {
   const d = adminData;
+  const nameBtn = document.getElementById('name-toggle-btn');
+  if (nameBtn) nameBtn.textContent = useNewTeamNames ? '当前：新队名 → 点击切换旧队名' : '当前：旧队名 → 点击切换新队名';
   renderLockControls();
   document.getElementById('ov-cards').innerHTML = `
     <div class="ov-card"><div class="ov-num">${d.totalUsers}</div><div class="ov-label">总选手</div></div>
@@ -1933,6 +1956,23 @@ async function adminResetPwd() {
     document.getElementById('adm-reset-user').value = '';
   } catch (e) { msgEl.textContent = '❌ ' + e.message; }
 }
+
+function toggleTeamNames() {
+  useNewTeamNames = !useNewTeamNames;
+  localStorage.setItem('useNewTeamNames', useNewTeamNames ? '1' : '0');
+  ALL_TEAMS = ALL_TEAMS_DATA.map(t => useNewTeamNames ? t.name : t.oldName);
+  const sw = document.getElementById('name-switch');
+  if (sw) sw.textContent = useNewTeamNames ? '切换旧队名' : '切换新队名';
+  document.getElementById('hdr-team').textContent = displayTeamName(currentUser?.team) || '';
+  loadAllData();
+}
+(function() {
+  const saved = localStorage.getItem('useNewTeamNames');
+  if (saved === '0') {
+    useNewTeamNames = false;
+    ALL_TEAMS = ALL_TEAMS_DATA.map(t => t.oldName);
+  }
+})();
 
 async function adminClearUnsettled() {
   if (!confirm('确认清除所有未结算预测？竞彩币将全部退还给用户。')) return;
