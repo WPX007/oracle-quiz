@@ -743,6 +743,43 @@ app.post('/api/admin/delete-market', requireAuth, requireAdmin, (req, res) => {
   res.json({ ok: true, refunded: betsAll.length });
 });
 
+// ── Admin: attendance (全勤统计) ──────────────────────────
+app.get('/api/admin/attendance', requireAuth, requireAdmin, (req, res) => {
+  const startedMatches = db.prepare(`
+    SELECT DISTINCT match_id FROM predictions
+  `).all().map(r => r.match_id);
+
+  const matches = db.prepare(`
+    SELECT id FROM matches WHERE team1 != '' AND team2 != '' AND team1 IS NOT NULL AND team2 IS NOT NULL
+  `).all().map(r => r.id);
+
+  const activeMatches = matches.filter(id => startedMatches.includes(id));
+  const totalActive = activeMatches.length;
+
+  const users = db.prepare('SELECT id, display, team FROM users WHERE is_admin = 0 ORDER BY display').all();
+  const predsByUser = {};
+  const allPreds = db.prepare('SELECT user_id, match_id FROM predictions').all();
+  for (const p of allPreds) {
+    if (!predsByUser[p.user_id]) predsByUser[p.user_id] = new Set();
+    predsByUser[p.user_id].add(p.match_id);
+  }
+
+  const result = users.map(u => {
+    const myMatches = predsByUser[u.id] || new Set();
+    const participated = activeMatches.filter(mid => myMatches.has(mid));
+    const missed = activeMatches.filter(mid => !myMatches.has(mid));
+    return {
+      id: u.id, display: u.display, team: u.team,
+      participated: participated.length,
+      missed: missed.length,
+      missedMatches: missed,
+      isFullAttendance: totalActive > 0 && participated.length === totalActive,
+    };
+  });
+
+  res.json({ totalActive, activeMatches, users: result });
+});
+
 // ── Admin: data overview ──────────────────────────────────
 app.get('/api/admin/overview', requireAuth, requireAdmin, (req, res) => {
   const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users WHERE is_admin = 0').get().c;

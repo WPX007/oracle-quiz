@@ -503,8 +503,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
         <h3 style="margin-top:20px">🏆 奖项</h3>
         <ul>
           <li><span class="hl">赌神</span> — 竞彩币余额第 1 名</li>
-          <li><span class="hl">赌圣</span> — 竞彩币余额第 2 名</li>
-		  <li><span class="hl">赌侠</span> — 竞彩币余额第 3 名</li>
+          <li><span class="hl">赌圣</span> — 竞彩币余额第 2-3 名</li>
           <li><span class="hl">预言帝</span> — 命中率最高（至少参与一半场次比赛竞猜）</li>
           <li><span class="hl">毒奶王</span> — 命中率最低（至少参与一半场次比赛竞猜）</li>
           <li><span class="hl">梭哈勇士</span> — 单笔下注最大且命中</li>
@@ -1416,6 +1415,7 @@ async function renderAdmin() {
       <button onclick="switchAdminTab(this,'adm-match-preds')">淘汰赛预测</button>
       <button onclick="switchAdminTab(this,'adm-record-preds')">8强预测</button>
       <button onclick="switchAdminTab(this,'adm-markets')">盘口管理</button>
+      <button onclick="switchAdminTab(this,'adm-attendance')">全勤统计</button>
       <button onclick="switchAdminTab(this,'adm-coinlogs')">竞彩币流水</button>
       <button onclick="switchAdminTab(this,'adm-ops')">赛事操作</button>
     </div>
@@ -1492,6 +1492,14 @@ async function renderAdmin() {
       <div class="admin-panel">
         <h3>已有盘口</h3>
         <div class="scroll-box" id="adm-market-list"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-attendance">
+      <div class="admin-panel">
+        <h3>全勤统计</h3>
+        <div id="att-summary" style="font-size:13px;color:var(--text2);margin-bottom:12px"></div>
+        <div class="scroll-box" id="att-list"></div>
       </div>
     </div>
 
@@ -1583,6 +1591,7 @@ async function loadAdminData() {
     renderMatchPredsTable();
     renderRecordPredsTable();
     renderAdminMarketList();
+    loadAttendance();
     const logUserSel = document.getElementById('adm-log-user');
     if (logUserSel && adminData.userSummary) {
       logUserSel.innerHTML = '<option value="">全部用户</option>' + adminData.userSummary.map(u => `<option value="${u.id}">${u.display}</option>`).join('');
@@ -1962,6 +1971,34 @@ async function adminResetPwd() {
     msgEl.textContent = `✅ ${username} 的密码已重置为 000000`;
     document.getElementById('adm-reset-user').value = '';
   } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function loadAttendance() {
+  try {
+    const data = await api('/api/admin/attendance');
+    const summaryEl = document.getElementById('att-summary');
+    const listEl = document.getElementById('att-list');
+    if (!summaryEl || !listEl) return;
+
+    const sorted = [...data.users].sort((a, b) => {
+      if (a.isFullAttendance !== b.isFullAttendance) return b.isFullAttendance - a.isFullAttendance;
+      return b.participated - a.participated;
+    });
+    const fullAttCount = sorted.filter(u => u.isFullAttendance).length;
+
+    summaryEl.innerHTML = `已有 <strong style="color:var(--gold)">${data.totalActive}</strong> 场比赛被参与过竞猜。<strong style="color:var(--teal)">${fullAttCount}</strong> 人达成全勤。`;
+
+    let h = '<table class="detail-table"><thead><tr><th>姓名</th><th>队伍</th><th>参与场次</th><th>缺席场次</th><th>状态</th><th>缺席的比赛</th></tr></thead><tbody>';
+    for (const u of sorted) {
+      const badge = u.isFullAttendance
+        ? '<span style="color:var(--teal);font-weight:bold">🏆 全勤</span>'
+        : (u.missed.length === data.totalActive ? '<span style="color:var(--red)">0参与</span>' : `<span style="color:var(--text2)">${u.participated}/${data.totalActive}</span>`);
+      const missedStr = u.missedMatches.length ? u.missedMatches.join(', ') : '-';
+      h += `<tr><td>${u.display}</td><td style="color:var(--text2);font-size:11px">${displayTeamName(u.team)||'-'}</td><td>${u.participated}</td><td style="color:${u.missed>0?'var(--red)':'var(--teal)'}">${u.missed}</td><td>${badge}</td><td style="font-size:10px;color:var(--text2)">${missedStr}</td></tr>`;
+    }
+    h += '</tbody></table>';
+    listEl.innerHTML = h;
+  } catch(e) { console.error(e); }
 }
 
 function toggleTeamNames() {
