@@ -1,7 +1,6 @@
 node_modules/
 oracle.db
-oracle.db-shm
 oracle.db-wal
+oracle.db-shm
 server.log
-.DS_Store
-Thumbs.db
+*.bat
