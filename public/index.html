@@ -1257,6 +1257,7 @@ function renderLeaderboard(lb) {
 
 // ── Admin Panel ───────────────────────────────────────────
 let adminData = null;
+let currentAdminTab = 'adm-overview';
 
 async function renderAdmin() {
   const sec = document.getElementById('sec-admin');
@@ -1410,14 +1411,28 @@ async function renderAdmin() {
     </div>`;
 
   loadAdminData();
-  setTimeout(() => { updateResultDropdown(); onMatchSelectForTeams(); }, 50);
+  setTimeout(() => { updateResultDropdown(); onMatchSelectForTeams(); restoreAdminTab(); }, 50);
 }
 
 function switchAdminTab(btn, tabId) {
+  currentAdminTab = tabId;
   btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.admin-sub').forEach(s => s.classList.remove('active'));
   document.getElementById(tabId).classList.add('active');
+}
+
+function restoreAdminTab() {
+  if (currentAdminTab === 'adm-overview') return;
+  document.querySelectorAll('#sec-admin .admin-tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.admin-sub').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById(currentAdminTab);
+  if (target) target.classList.add('active');
+  document.querySelectorAll('#sec-admin .admin-tabs button').forEach(b => {
+    if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(`'${currentAdminTab}'`)) {
+      b.classList.add('active');
+    }
+  });
 }
 
 async function loadAdminData() {
@@ -1928,12 +1943,6 @@ document.getElementById('login-user').addEventListener('keydown', e => { if (e.k
 
 // ── Init ──────────────────────────────────────────────────
 checkSession();
-
-setInterval(() => {
-  if (currentUser && !document.hidden) {
-    loadAllData().catch(() => {});
-  }
-}, 15000);
 </script>
 </body>
 </html>
