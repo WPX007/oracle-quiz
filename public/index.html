@@ -826,10 +826,12 @@ function makeMatchCard(mid) {
   const lockBadge = locked && !isFinished ? '<span class="lock-badge">🔒 已封盘</span>' : '';
   const scoreBadge = isFinished && score ? `<span style="color:var(--teal);font-size:10px">${score}</span>` : '';
   const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
-  let html = `<div class="match-card ${locked ? 'locked' : ''}">`;
+  const t1Real = t1.resolved ? t1.name : '';
+  const t2Real = t2.resolved ? t2.name : '';
+  let html = `<div class="match-card ${locked ? 'locked' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
   const startTime = mData.start_time || '';
   if (startTime) {
-    html += `<div style="text-align:center;color:var(--text2);font-size:10px;background:rgba(0,0,0,.25);padding:3px">${startTime}</div>`;
+    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3)">⏰ ${startTime}</div>`;
   }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
@@ -850,7 +852,7 @@ function makeMatchCard(mid) {
     const isPending = pendingSel === t.name;
     const showAsPicked = hasPending ? isPending : isPicked;
     const canClick = t.resolved && !locked && !result && !currentUser?.is_admin && !pred;
-    const clickAttr = canClick ? `onclick="selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"` : '';
+    const clickAttr = canClick ? `onclick="event.stopPropagation();selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"` : '';
     const nameCls = t.resolved ? '' : 'tbd';
     const myScore = isFinished ? (isWinner ? scores[0] : scores[1]) : '';
     const teamScore = myScore ? `<span class="score-val">${myScore}</span>` : '';
@@ -879,7 +881,7 @@ function makeMatchCard(mid) {
   const isChanging = pred && pendingTeam && pendingTeam !== pred.pick;
 
   if (pendingTeam && !pred) {
-    html += `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(200,170,110,.05);font-size:10px">
+    html += `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(200,170,110,.05);font-size:10px" onclick="event.stopPropagation()">
       <input type="number" id="match-amt-${mid}" placeholder="≥20" min="20" value="100" style="width:60px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
       <span style="color:var(--teal);cursor:pointer;font-weight:bold" onclick="confirmMatchPick('${mid}')">确认</span>
       <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
@@ -897,6 +899,41 @@ function makeMatchCard(mid) {
 
   html += '</div>';
   return html;
+}
+
+function showTeamDetail(t1, t2, mid) {
+  const existing = document.getElementById('team-detail-modal');
+  if (existing) existing.remove();
+
+  function buildTeamBlock(teamName) {
+    if (!teamName) return `<div style="flex:1;text-align:center;color:var(--text2);padding:20px">TBD</div>`;
+    const tData = ALL_TEAMS_DATA.find(x => x.name === teamName || x.oldName === teamName);
+    const displayN = displayTeamName(teamName);
+    const members = tData ? tData.members : [];
+    let h = `<div style="flex:1;padding:12px">`;
+    h += `<div style="color:var(--gold);font-size:16px;font-weight:bold;text-align:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">${displayN}</div>`;
+    if (members.length === 0) {
+      h += `<div style="color:var(--text2);font-size:12px;text-align:center">暂无成员信息</div>`;
+    } else {
+      for (const m of members) {
+        h += `<div style="padding:4px 8px;font-size:13px;color:var(--text);text-align:center;border-bottom:1px solid rgba(30,58,95,.3)">${m}</div>`;
+      }
+    }
+    h += `</div>`;
+    return h;
+  }
+
+  let html = `<div id="team-detail-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:300;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">`;
+  html += `<div style="width:580px;max-height:80vh;background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.5)">`;
+  html += `<div style="padding:12px;text-align:center;background:linear-gradient(135deg,var(--bg3),var(--bg4));border-bottom:1px solid var(--border);color:var(--gold);font-weight:bold;letter-spacing:2px">${mid} 对阵详情</div>`;
+  html += `<div style="display:flex;align-items:stretch">`;
+  html += buildTeamBlock(t1);
+  html += `<div style="width:60px;display:flex;align-items:center;justify-content:center;color:var(--gold);font-size:20px;font-weight:bold;background:rgba(0,0,0,.15)">VS</div>`;
+  html += buildTeamBlock(t2);
+  html += `</div>`;
+  html += `<div style="text-align:center;padding:10px;border-top:1px solid var(--border)"><button style="padding:6px 20px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:4px;cursor:pointer" onclick="document.getElementById('team-detail-modal').remove()">关闭</button></div>`;
+  html += `</div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
 }
 
 let pendingMatchPick = {};
@@ -1891,6 +1928,12 @@ document.getElementById('login-user').addEventListener('keydown', e => { if (e.k
 
 // ── Init ──────────────────────────────────────────────────
 checkSession();
+
+setInterval(() => {
+  if (currentUser && !document.hidden) {
+    loadAllData().catch(() => {});
+  }
+}, 15000);
 </script>
 </body>
 </html>

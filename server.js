@@ -348,8 +348,11 @@ app.post('/api/predict', requireAuth, (req, res) => {
 app.get('/api/matches', (req, res) => {
   const matches = db.prepare('SELECT * FROM matches').all();
   const betStats = db.prepare(`
-    SELECT match_id, pick, COUNT(*) as cnt, COALESCE(SUM(amount),0) as total
-    FROM predictions GROUP BY match_id, pick
+    SELECT p.match_id, p.pick, COUNT(*) as cnt, COALESCE(SUM(p.amount),0) as total
+    FROM predictions p
+    JOIN matches m ON m.id = p.match_id
+    WHERE p.settled = 0 OR (p.pick = m.team1 OR p.pick = m.team2)
+    GROUP BY p.match_id, p.pick
   `).all();
   const statsMap = {};
   for (const s of betStats) {
@@ -730,7 +733,7 @@ app.post('/api/admin/update-match-teams', requireAuth, requireAdmin, (req, res) 
       logCoins(b.user_id, b.amount, '更新对阵退回', match_id);
       refunded++;
     }
-    db.prepare('DELETE FROM predictions WHERE match_id = ? AND settled = 0').run(match_id);
+    db.prepare('DELETE FROM predictions WHERE match_id = ?').run(match_id);
     db.prepare("UPDATE matches SET team1 = ?, team2 = ?, start_time = ?, result = NULL, score = '', locked = 0 WHERE id = ?").run(t1, t2, st, match_id);
   });
   tx();
