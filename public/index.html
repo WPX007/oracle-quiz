@@ -827,6 +827,10 @@ function makeMatchCard(mid) {
   const scoreBadge = isFinished && score ? `<span style="color:var(--teal);font-size:10px">${score}</span>` : '';
   const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
   let html = `<div class="match-card ${locked ? 'locked' : ''}">`;
+  const startTime = mData.start_time || '';
+  if (startTime) {
+    html += `<div style="text-align:center;color:var(--text2);font-size:10px;background:rgba(0,0,0,.25);padding:3px">${startTime}</div>`;
+  }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
   [t1, t2].forEach((t, idx) => {
@@ -876,7 +880,7 @@ function makeMatchCard(mid) {
 
   if (pendingTeam && !pred) {
     html += `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(200,170,110,.05);font-size:10px">
-      <input type="number" id="match-amt-${mid}" placeholder="金额" min="1" value="100" style="width:60px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+      <input type="number" id="match-amt-${mid}" placeholder="≥20" min="20" value="100" style="width:60px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
       <span style="color:var(--teal);cursor:pointer;font-weight:bold" onclick="confirmMatchPick('${mid}')">确认</span>
       <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
     </div>`;
@@ -921,7 +925,7 @@ async function confirmMatchPick(mid) {
   if (!team) { toast('请先选择队伍'); return; }
   const input = document.getElementById('match-amt-' + mid);
   const amount = input ? parseInt(input.value) : 0;
-  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
+  if (!amount || amount < 20) { toast('下注金额最低 20 币'); return; }
   try {
     await api('/api/predict', { method: 'POST', body: { match_id: mid, pick: team, amount } });
     delete pendingMatchPick[mid];
@@ -1131,7 +1135,7 @@ function cancelBetSelect(marketId) {
 async function confirmBet(marketId, optionId) {
   const input = document.getElementById('bet-amt-' + marketId);
   const amount = input ? parseInt(input.value) : 0;
-  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
+  if (!amount || amount < 20) { toast('下注金额最低 20 币'); return; }
   try {
     await api('/api/bet', { method: 'POST', body: { market_id: marketId, option_id: optionId, amount } });
     delete selectedBetOption[marketId];
@@ -1341,10 +1345,14 @@ async function renderAdmin() {
       <div class="admin-panel">
         <h3>🔧 更新对阵（淘汰赛填入实际队名）</h3>
         <div class="admin-row">
-          <select id="adm-m2">${matchOpts}</select>
+          <select id="adm-m2" onchange="onMatchSelectForTeams()">${matchOpts}</select>
           <select id="adm-t1"><option value="">队伍1</option>${teamOpts}</select>
           <select id="adm-t2"><option value="">队伍2</option>${teamOpts}</select>
-          <button class="admin-btn primary" onclick="adminUpdateTeams()">更新对阵</button>
+          <select id="adm-time-m" style="width:60px"><option value="">月</option>${Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1}月</option>`).join('')}</select>
+          <select id="adm-time-d" style="width:60px"><option value="">日</option>${Array.from({length:31},(_,i)=>`<option value="${i+1}">${i+1}日</option>`).join('')}</select>
+          <input id="adm-time-hm" placeholder="时:分 如 20:30" style="width:110px">
+          <button class="admin-btn primary" onclick="adminUpdateTeams()">更新对阵+时间</button>
+          <button class="admin-btn warn" onclick="adminUpdateTime()">只改时间</button>
         </div>
         <div class="admin-msg" id="adm-msg2"></div>
       </div>
@@ -1365,7 +1373,7 @@ async function renderAdmin() {
     </div>`;
 
   loadAdminData();
-  setTimeout(updateResultDropdown, 50);
+  setTimeout(() => { updateResultDropdown(); onMatchSelectForTeams(); }, 50);
 }
 
 function switchAdminTab(btn, tabId) {
@@ -1828,13 +1836,50 @@ function jumpToMatchTab(mid) {
   document.getElementById('sec-' + tab).classList.add('active');
 }
 
+function onMatchSelectForTeams() {
+  const mid = document.getElementById('adm-m2')?.value;
+  if (!mid) return;
+  const m = matchesData[mid];
+  if (!m) return;
+  const t1El = document.getElementById('adm-t1');
+  const t2El = document.getElementById('adm-t2');
+  if (t1El) t1El.value = m.team1 && !m.team1.match(/^[SWL]/) ? m.team1 : '';
+  if (t2El) t2El.value = m.team2 && !m.team2.match(/^[SWL]/) ? m.team2 : '';
+
+  const match = (m.start_time || '').match(/^(\d+)\/(\d+)\s+(\d+:\d+)$/);
+  const mSel = document.getElementById('adm-time-m');
+  const dSel = document.getElementById('adm-time-d');
+  const hmEl = document.getElementById('adm-time-hm');
+  if (mSel) mSel.value = match ? match[1] : '';
+  if (dSel) dSel.value = match ? match[2] : '';
+  if (hmEl) hmEl.value = match ? match[3] : '';
+}
+
+async function adminUpdateTime() {
+  const mid = document.getElementById('adm-m2').value;
+  const tm = document.getElementById('adm-time-m').value;
+  const td = document.getElementById('adm-time-d').value;
+  const thm = document.getElementById('adm-time-hm').value.trim();
+  const st = (tm && td && thm) ? `${tm}/${td} ${thm}` : '';
+  try {
+    await api('/api/admin/update-match-time', { method: 'POST', body: { match_id: mid, start_time: st } });
+    document.getElementById('adm-msg2').textContent = st ? `✅ ${mid} 时间已更新为 ${st}` : `✅ ${mid} 时间已清空`;
+    await loadAllData();
+    jumpToMatchTab(mid);
+  } catch (e) { document.getElementById('adm-msg2').textContent = '❌ ' + e.message; }
+}
+
 async function adminUpdateTeams() {
   const mid = document.getElementById('adm-m2').value;
   const t1 = document.getElementById('adm-t1').value;
   const t2 = document.getElementById('adm-t2').value;
+  const tm = document.getElementById('adm-time-m').value;
+  const td = document.getElementById('adm-time-d').value;
+  const thm = document.getElementById('adm-time-hm').value.trim();
+  const st = (tm && td && thm) ? `${tm}/${td} ${thm}` : '';
   try {
-    await api('/api/admin/update-match-teams', { method: 'POST', body: { match_id: mid, team1: t1, team2: t2 } });
-    document.getElementById('adm-msg2').textContent = `✅ ${mid} 对阵已更新`;
+    const data = await api('/api/admin/update-match-teams', { method: 'POST', body: { match_id: mid, team1: t1, team2: t2, start_time: st } });
+    document.getElementById('adm-msg2').textContent = `✅ ${mid} 对阵已更新${data.refunded ? `（已退还 ${data.refunded} 笔下注）` : ''}`;
     await loadAllData();
     jumpToMatchTab(mid);
   } catch (e) { document.getElementById('adm-msg2').textContent = '❌ ' + e.message; }

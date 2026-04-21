@@ -31,7 +31,8 @@ db.exec(`
     result    TEXT,
     score     TEXT,
     locked    INTEGER DEFAULT 0,
-    stage     TEXT DEFAULT ''
+    stage     TEXT DEFAULT '',
+    start_time TEXT DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS predictions (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,6 +102,8 @@ db.exec(`
     value TEXT
   );
 `);
+
+try { db.prepare("ALTER TABLE matches ADD COLUMN start_time TEXT DEFAULT ''").run(); } catch (e) {}
 
 // ── Seed data ─────────────────────────────────────────────
 const PLAYERS = [
@@ -326,7 +329,7 @@ app.post('/api/predict', requireAuth, (req, res) => {
   if (existing) return res.status(400).json({ error: '已预测，不可修改' });
   if (!pick) return res.status(400).json({ error: '请选择预测队伍' });
   const betAmount = Math.floor(Number(amount));
-  if (!betAmount || betAmount <= 0) return res.status(400).json({ error: '请输入下注金额' });
+  if (!betAmount || betAmount < 20) return res.status(400).json({ error: '下注金额最低 20 币' });
 
   const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
   if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
@@ -490,7 +493,7 @@ app.post('/api/bet', requireAuth, (req, res) => {
   const { market_id, option_id, amount } = req.body;
   if (!market_id || !option_id || !amount) return res.status(400).json({ error: '参数缺失' });
   const betAmount = Math.floor(Number(amount));
-  if (betAmount <= 0) return res.status(400).json({ error: '下注金额必须大于 0' });
+  if (betAmount < 20) return res.status(400).json({ error: '下注金额最低 20 币' });
 
   const market = db.prepare('SELECT * FROM markets WHERE id = ?').get(market_id);
   if (!market) return res.status(404).json({ error: '盘口不存在' });
@@ -708,23 +711,30 @@ app.get('/api/leaderboard', (req, res) => {
 });
 
 // ── Admin: update teams on matches (for after groups) ─────
+app.post('/api/admin/update-match-time', requireAuth, requireAdmin, (req, res) => {
+  const { match_id, start_time } = req.body;
+  if (!match_id) return res.status(400).json({ error: '参数缺失' });
+  db.prepare('UPDATE matches SET start_time = ? WHERE id = ?').run(start_time || '', match_id);
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/update-match-teams', requireAuth, requireAdmin, (req, res) => {
-  const { match_id, team1, team2 } = req.body;
+  const { match_id, team1, team2, start_time } = req.body;
   const t1 = team1 || '';
   const t2 = team2 || '';
+  const st = start_time || '';
+  let refunded = 0;
   const tx = db.transaction(() => {
-    db.prepare('UPDATE matches SET team1 = ?, team2 = ? WHERE id = ?').run(t1, t2, match_id);
-    if (!t1 || !t2) {
-      db.prepare("UPDATE matches SET result = NULL, score = '', locked = 0 WHERE id = ?").run(match_id);
-      const bets = db.prepare('SELECT * FROM predictions WHERE match_id = ? AND settled = 0').all(match_id);
-      for (const b of bets) {
-        logCoins(b.user_id, b.amount, '对阵清除退回', match_id);
-      }
-      db.prepare('DELETE FROM predictions WHERE match_id = ? AND settled = 0').run(match_id);
+    const bets = db.prepare('SELECT * FROM predictions WHERE match_id = ? AND settled = 0').all(match_id);
+    for (const b of bets) {
+      logCoins(b.user_id, b.amount, '更新对阵退回', match_id);
+      refunded++;
     }
+    db.prepare('DELETE FROM predictions WHERE match_id = ? AND settled = 0').run(match_id);
+    db.prepare("UPDATE matches SET team1 = ?, team2 = ?, start_time = ?, result = NULL, score = '', locked = 0 WHERE id = ?").run(t1, t2, st, match_id);
   });
   tx();
-  res.json({ ok: true });
+  res.json({ ok: true, refunded });
 });
 
 // ── Lock status ───────────────────────────────────────────
