@@ -320,30 +320,20 @@ app.post('/api/predict', requireAuth, (req, res) => {
   const existing = db.prepare('SELECT * FROM predictions WHERE user_id = ? AND match_id = ?').get(req.session.userId, match_id);
 
   if (action === 'cancel') {
-    if (!existing) return res.status(400).json({ error: '没有预测记录' });
-    const tx = db.transaction(() => {
-      logCoins(req.session.userId, existing.amount, '撤回预测', match_id);
-      db.prepare('DELETE FROM predictions WHERE id = ?').run(existing.id);
-    });
-    tx();
-    return res.json({ ok: true });
+    return res.status(400).json({ error: '预测后不可撤销' });
   }
 
+  if (existing) return res.status(400).json({ error: '已预测，不可修改' });
   if (!pick) return res.status(400).json({ error: '请选择预测队伍' });
   const betAmount = Math.floor(Number(amount));
   if (!betAmount || betAmount <= 0) return res.status(400).json({ error: '请输入下注金额' });
 
   const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
-  const available = user.points + (existing ? existing.amount : 0);
-  if (betAmount > available) return res.status(400).json({ error: `竞彩币不足（可用 ${available}）` });
+  if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
 
   const tx = db.transaction(() => {
-    if (existing) {
-      logCoins(req.session.userId, existing.amount, '退回旧注', match_id);
-    }
     logCoins(req.session.userId, -betAmount, '比赛下注', `${match_id} → ${pick}`);
-    db.prepare(`INSERT INTO predictions (user_id, match_id, pick, amount) VALUES (?, ?, ?, ?)
-      ON CONFLICT(user_id, match_id) DO UPDATE SET pick = excluded.pick, amount = excluded.amount, created_at = datetime('now','localtime')`)
+    db.prepare('INSERT INTO predictions (user_id, match_id, pick, amount) VALUES (?, ?, ?, ?)')
       .run(req.session.userId, match_id, pick, betAmount);
   });
   tx();
@@ -512,18 +502,13 @@ app.post('/api/bet', requireAuth, (req, res) => {
 
   const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
   const existing = db.prepare('SELECT * FROM bets WHERE user_id = ? AND market_id = ?').get(req.session.userId, market_id);
+  if (existing) return res.status(400).json({ error: '已下注，不可修改' });
 
-  let available = user.points;
-  if (existing) available += existing.amount;
-  if (betAmount > available) return res.status(400).json({ error: `竞彩币不足（可用 ${available}）` });
+  if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
 
   const tx = db.transaction(() => {
-    if (existing) {
-      logCoins(req.session.userId, existing.amount, '退回旧注', `盘口${market_id}`);
-    }
     logCoins(req.session.userId, -betAmount, '盘口下注', `盘口${market_id}`);
-    db.prepare(`INSERT INTO bets (user_id, market_id, option_id, amount) VALUES (?, ?, ?, ?)
-      ON CONFLICT(user_id, market_id) DO UPDATE SET option_id = excluded.option_id, amount = excluded.amount, created_at = datetime('now','localtime')`)
+    db.prepare('INSERT INTO bets (user_id, market_id, option_id, amount) VALUES (?, ?, ?, ?)')
       .run(req.session.userId, market_id, option_id, betAmount);
   });
   tx();

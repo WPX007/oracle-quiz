@@ -845,7 +845,7 @@ function makeMatchCard(mid) {
     const hasPending = !!pendingSel;
     const isPending = pendingSel === t.name;
     const showAsPicked = hasPending ? isPending : isPicked;
-    const canClick = t.resolved && !locked && !result && !currentUser?.is_admin;
+    const canClick = t.resolved && !locked && !result && !currentUser?.is_admin && !pred;
     const clickAttr = canClick ? `onclick="selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"` : '';
     const nameCls = t.resolved ? '' : 'tbd';
     const myScore = isFinished ? (isWinner ? scores[0] : scores[1]) : '';
@@ -881,13 +881,8 @@ function makeMatchCard(mid) {
       <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
     </div>`;
   } else if (pred && !isFinished && canBet) {
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px;flex-wrap:nowrap">
-      <span style="color:var(--teal);white-space:nowrap">已押${pred.amount}币</span>
-      <span style="display:flex;align-items:center;gap:3px;margin-left:auto">
-        <input type="number" id="match-amt-${mid}" value="${pred.amount}" min="1" style="width:42px;padding:1px 3px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
-        <span style="color:var(--gold);cursor:pointer;white-space:nowrap" onclick="confirmMatchPick('${mid}')">修改</span>
-        <span style="color:var(--text2);cursor:pointer;white-space:nowrap" onclick="cancelPredict('${mid}')">撤回</span>
-      </span>
+    html += `<div style="display:flex;align-items:center;padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px">
+      <span style="color:var(--teal)">已押${pred.amount}币（不可撤销）</span>
     </div>`;
   } else if (pred && isFinished) {
     const wonText = pred.won
@@ -1093,14 +1088,8 @@ function renderMarkets() {
       if (!isLocked && !isSettled) {
         if (bet) {
           const pickedOpt = m.options.find(o => o.id === bet.option_id);
-          const payoutInfo = bet.settled ? (bet.won ? `赢得 ${bet.payout} 币` : '未命中') : '';
           html += `<div class="market-bet-area">
-            <span class="bet-my">已下注 ${bet.amount} 币 → ${pickedOpt?.label || '?'}</span>
-            <span class="bet-info">点击其他选项可换选（金额不变），或重新输入金额</span>
-          </div>
-          <div class="market-bet-area">
-            <input type="number" id="bet-amt-${m.id}" placeholder="修改金额" min="1" value="${bet.amount}">
-            <button class="bet-btn" onclick="confirmBet(${m.id},${bet.option_id})">修改下注</button>
+            <span class="bet-my">已下注 ${bet.amount} 币 → ${pickedOpt?.label || '?'}（不可撤销）</span>
           </div>`;
         } else if (selOpt) {
           const selOptLabel = m.options.find(o => o.id === selOpt)?.label || '';
@@ -1127,10 +1116,7 @@ function renderMarkets() {
 function selectBetOption(marketId, optionId) {
   const bet = myBets[marketId];
   if (bet) {
-    const amount = bet.amount;
-    api('/api/bet', { method: 'POST', body: { market_id: marketId, option_id: optionId, amount } })
-      .then(() => { toast('换选成功'); loadAllData(); })
-      .catch(e => toast(e.message));
+    toast('下注后不可更改');
     return;
   }
   selectedBetOption[marketId] = optionId;
