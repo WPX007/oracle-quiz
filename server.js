@@ -47,18 +47,6 @@ db.exec(`
     FOREIGN KEY (match_id) REFERENCES matches(id),
     UNIQUE(user_id, match_id)
   );
-  CREATE TABLE IF NOT EXISTS record_predictions (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id   INTEGER NOT NULL,
-    category  TEXT NOT NULL,
-    team_name TEXT NOT NULL,
-    amount    INTEGER NOT NULL DEFAULT 0,
-    payout    INTEGER DEFAULT 0,
-    settled   INTEGER DEFAULT 0,
-    won       INTEGER DEFAULT 0,
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    UNIQUE(user_id, category, team_name)
-  );
   CREATE TABLE IF NOT EXISTS checkins (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id   INTEGER NOT NULL,
@@ -112,10 +100,6 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT
   );
-  INSERT OR IGNORE INTO settings (key, value) VALUES ('lock_3-0', '0');
-  INSERT OR IGNORE INTO settings (key, value) VALUES ('lock_3-1', '0');
-  INSERT OR IGNORE INTO settings (key, value) VALUES ('lock_3-2', '0');
-  INSERT OR IGNORE INTO settings (key, value) VALUES ('lock_0-3', '0');
 `);
 
 // ── Seed data ─────────────────────────────────────────────
@@ -265,15 +249,8 @@ function requireAdmin(req, res, next) {
   if (!req.session.isAdmin) return res.status(403).json({ error: '需要管理员权限' });
   next();
 }
-function isCategoryLocked(cat) {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get('lock_' + cat);
-  return row && row.value === '1';
-}
 function getLockStatus() {
-  const rows = db.prepare("SELECT key, value FROM settings WHERE key LIKE 'lock_%'").all();
-  const locks = {};
-  for (const r of rows) locks[r.key.replace('lock_', '')] = r.value === '1';
-  return locks;
+  return {};
 }
 
 // ── Auth API ──────────────────────────────────────────────
@@ -327,8 +304,7 @@ app.post('/api/checkin', requireAuth, (req, res) => {
 // ── Predictions API ───────────────────────────────────────
 app.get('/api/predictions', requireAuth, (req, res) => {
   const preds = db.prepare('SELECT match_id, pick, amount, payout, settled, won FROM predictions WHERE user_id = ?').all(req.session.userId);
-  const recordPreds = db.prepare('SELECT category, team_name, amount, payout, settled, won FROM record_predictions WHERE user_id = ?').all(req.session.userId);
-  res.json({ predictions: preds, recordPredictions: recordPreds });
+  res.json({ predictions: preds, recordPredictions: [] });
 });
 
 app.post('/api/predict', requireAuth, (req, res) => {
@@ -372,50 +348,6 @@ app.post('/api/predict', requireAuth, (req, res) => {
   });
   tx();
 
-  res.json({ ok: true });
-});
-
-app.post('/api/predict-record', requireAuth, (req, res) => {
-  if (req.session.isAdmin) return res.status(403).json({ error: '管理员不可预测' });
-  const { category, teams, amount, action } = req.body;
-  const validCats = ['3-0','3-1','3-2','0-3'];
-  const catLimits = {'3-0':2, '3-1':3, '3-2':3, '0-3':2};
-  if (!category || !validCats.includes(category)) return res.status(400).json({ error: '参数缺失或分类无效' });
-  if (!req.session.isAdmin && isCategoryLocked(category)) return res.status(403).json({ error: `${category} 已封盘，暂不可操作` });
-
-  if (action === 'remove') {
-    const oldRows = db.prepare('SELECT * FROM record_predictions WHERE user_id = ? AND category = ?').all(req.session.userId, category);
-    const oldAmount = oldRows.length > 0 ? oldRows[0].amount : 0;
-    const tx = db.transaction(() => {
-      if (oldAmount > 0) logCoins(req.session.userId, oldAmount, '撤回8强预测', category);
-      db.prepare('DELETE FROM record_predictions WHERE user_id = ? AND category = ?').run(req.session.userId, category);
-    });
-    tx();
-    return res.json({ ok: true });
-  }
-
-  if (!teams || !Array.isArray(teams)) return res.status(400).json({ error: '请选择队伍' });
-  const required = catLimits[category] || 2;
-  if (teams.length !== required) return res.status(400).json({ error: `${category} 必须选择 ${required} 支队伍` });
-
-  const betAmount = Math.floor(Number(amount));
-  if (!betAmount || betAmount <= 0) return res.status(400).json({ error: '请输入下注金额' });
-
-  const oldRows = db.prepare('SELECT * FROM record_predictions WHERE user_id = ? AND category = ?').all(req.session.userId, category);
-  const oldAmount = oldRows.length > 0 ? oldRows[0].amount : 0;
-
-  const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
-  const available = user.points + oldAmount;
-  if (betAmount > available) return res.status(400).json({ error: `竞彩币不足（可用 ${available}）` });
-
-  const tx = db.transaction(() => {
-    if (oldAmount > 0) logCoins(req.session.userId, oldAmount, '退回旧注', `8强${category}`);
-    db.prepare('DELETE FROM record_predictions WHERE user_id = ? AND category = ?').run(req.session.userId, category);
-    logCoins(req.session.userId, -betAmount, '8强下注', `${category} → ${teams.join(',')}`);
-    const ins = db.prepare('INSERT INTO record_predictions (user_id, category, team_name, amount) VALUES (?, ?, ?, ?)');
-    for (const t of teams) ins.run(req.session.userId, category, t, betAmount);
-  });
-  tx();
   res.json({ ok: true });
 });
 
@@ -528,61 +460,8 @@ app.post('/api/admin/undo-match-result', requireAuth, requireAdmin, (req, res) =
   res.json({ ok: true, undone: count });
 });
 
-app.post('/api/admin/settle-records', requireAuth, requireAdmin, (req, res) => {
-  const { category, teams } = req.body;
-  const validCats = ['3-0','3-1','3-2','0-3'];
-  if (!category || !teams || !validCats.includes(category)) return res.status(400).json({ error: '参数缺失' });
-
-  const preds = db.prepare('SELECT * FROM record_predictions WHERE category = ? AND settled = 0').all(category);
-
-  const userBets = {};
-  for (const p of preds) {
-    if (!userBets[p.user_id]) userBets[p.user_id] = { amount: p.amount, teams: [], rows: [] };
-    userBets[p.user_id].teams.push(p.team_name);
-    userBets[p.user_id].rows.push(p);
-  }
-
-  const pool = Object.values(userBets).reduce((s, u) => s + u.amount, 0);
-  const winnerUsers = {};
-  for (const [uid, u] of Object.entries(userBets)) {
-    if (u.teams.every(t => teams.includes(t))) winnerUsers[uid] = u;
-  }
-  const winnerTotal = Object.values(winnerUsers).reduce((s, u) => s + u.amount, 0);
-
-  const updatePred = db.prepare('UPDATE record_predictions SET settled = 1, won = ?, payout = ? WHERE id = ?');
-
-  let settledCount = 0;
-  const tx = db.transaction(() => {
-    for (const [uid, u] of Object.entries(userBets)) {
-      const isWinner = !!winnerUsers[uid];
-      const payout = (isWinner && winnerTotal > 0) ? Math.floor(pool * u.amount / winnerTotal) : 0;
-      for (const row of u.rows) {
-        const rowWon = teams.includes(row.team_name) ? 1 : 0;
-        updatePred.run(rowWon, isWinner ? payout : 0, row.id);
-        settledCount++;
-      }
-      if (isWinner && payout > 0) logCoins(parseInt(uid), payout, '8强命中', `${category} +${payout}`);
-    }
-  });
-  tx();
-
-  res.json({ ok: true, settled: settledCount, pool, winners: Object.keys(winnerUsers).length });
-});
-
 app.get('/api/record-stats', (req, res) => {
-  const stats = db.prepare(`
-    SELECT category, team_name, COUNT(*) as picks, COALESCE(SUM(amount),0) as total_amount
-    FROM record_predictions GROUP BY category, team_name
-    ORDER BY category, total_amount DESC
-  `).all();
-  const poolByCat = db.prepare(`
-    SELECT category, COALESCE(SUM(amount),0) as pool FROM (
-      SELECT category, user_id, MAX(amount) as amount FROM record_predictions GROUP BY category, user_id
-    ) GROUP BY category
-  `).all();
-  const pools = {};
-  for (const p of poolByCat) pools[p.category] = p.pool;
-  res.json({ stats, pools });
+  res.json({ stats: [], pools: {} });
 });
 
 // ── Markets (custom betting) API ──────────────────────────
@@ -784,12 +663,12 @@ app.get('/api/admin/attendance', requireAuth, requireAdmin, (req, res) => {
 app.get('/api/admin/overview', requireAuth, requireAdmin, (req, res) => {
   const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users WHERE is_admin = 0').get().c;
   const totalPredictions = db.prepare('SELECT COUNT(*) as c FROM predictions').get().c;
-  const totalRecordPreds = db.prepare('SELECT COUNT(*) as c FROM record_predictions').get().c;
+  const totalRecordPreds = 0;
   const totalBets = db.prepare('SELECT COUNT(*) as c FROM bets').get().c;
   const totalMarkets = db.prepare('SELECT COUNT(*) as c FROM markets').get().c;
   const participatedUsers = db.prepare(`
     SELECT COUNT(DISTINCT user_id) as c FROM (
-      SELECT user_id FROM predictions UNION ALL SELECT user_id FROM record_predictions UNION ALL SELECT user_id FROM bets
+      SELECT user_id FROM predictions UNION ALL SELECT user_id FROM bets
     )
   `).get().c;
   const settledMatches = db.prepare("SELECT COUNT(*) as c FROM matches WHERE result IS NOT NULL AND result != ''").get().c;
@@ -805,20 +684,14 @@ app.get('/api/admin/all-predictions', requireAuth, requireAdmin, (req, res) => {
     ORDER BY p.match_id, u.display
   `).all();
 
-  const recordPreds = db.prepare(`
-    SELECT u.display, u.team, r.category, r.team_name, r.amount, r.payout, r.settled, r.won
-    FROM record_predictions r JOIN users u ON u.id = r.user_id
-    ORDER BY r.category, u.display
-  `).all();
+  const recordPreds = [];
 
   const userSummary = db.prepare(`
     SELECT u.id, u.username, u.display, u.team, u.points,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id) as match_preds,
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id) as record_preds,
-      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 1) +
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id AND settled = 1 AND won = 1) as hits,
-      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) +
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id AND settled = 1) as settled
+      0 as record_preds,
+      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 1) as hits,
+      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) as settled
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();
@@ -827,7 +700,6 @@ app.get('/api/admin/all-predictions', requireAuth, requireAdmin, (req, res) => {
     SELECT u.username, u.display, u.team FROM users u
     WHERE u.is_admin = 0
       AND u.id NOT IN (SELECT DISTINCT user_id FROM predictions)
-      AND u.id NOT IN (SELECT DISTINCT user_id FROM record_predictions)
       AND u.id NOT IN (SELECT DISTINCT user_id FROM bets)
   `).all();
 
@@ -839,13 +711,10 @@ app.get('/api/leaderboard', (req, res) => {
   const users = db.prepare(`
     SELECT u.id, u.username, u.display, u.team, u.points,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 1) +
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id AND settled = 1 AND won = 1) +
       (SELECT COUNT(*) FROM bets WHERE user_id = u.id AND settled = 1 AND won = 1) as hits,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id) +
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id) +
       (SELECT COUNT(*) FROM bets WHERE user_id = u.id) as total_preds,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) +
-      (SELECT COUNT(*) FROM record_predictions WHERE user_id = u.id AND settled = 1) +
       (SELECT COUNT(*) FROM bets WHERE user_id = u.id AND settled = 1) as settled
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
@@ -882,21 +751,9 @@ app.get('/api/lock-status', (req, res) => {
   res.json({ categories, matches: matchLocks });
 });
 
-app.post('/api/admin/lock-category', requireAuth, requireAdmin, (req, res) => {
-  const { category, locked } = req.body;
-  const validCats = ['3-0','3-1','3-2','0-3'];
-  if (!validCats.includes(category)) return res.status(400).json({ error: '无效分类' });
-  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('lock_' + category, locked ? '1' : '0');
-  res.json({ ok: true });
-});
-
 app.post('/api/admin/lock-all', requireAuth, requireAdmin, (req, res) => {
   const { locked } = req.body;
-  const val = locked ? '1' : '0';
   const tx = db.transaction(() => {
-    for (const cat of ['3-0','3-1','3-2','0-3']) {
-      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run('lock_' + cat, val);
-    }
     db.prepare('UPDATE matches SET locked = ?').run(locked ? 1 : 0);
   });
   tx();
@@ -913,13 +770,6 @@ app.post('/api/admin/clear-unsettled', requireAuth, requireAdmin, (req, res) => 
       refunded++;
     }
     db.prepare('DELETE FROM predictions WHERE settled = 0').run();
-
-    const recUsers = db.prepare('SELECT user_id, category, MAX(amount) as amount FROM record_predictions WHERE settled = 0 GROUP BY user_id, category').all();
-    for (const r of recUsers) {
-      logCoins(r.user_id, r.amount, '管理员清除退回', `8强${r.category}`);
-      refunded++;
-    }
-    db.prepare('DELETE FROM record_predictions WHERE settled = 0').run();
 
     const bets = db.prepare('SELECT * FROM bets WHERE settled = 0').all();
     for (const b of bets) {

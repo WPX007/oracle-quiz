@@ -467,7 +467,6 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 
   <div class="nav" id="main-nav">
     <button class="active" data-tab="swiss">瑞士轮</button>
-    <button data-tab="groups">8强预测</button>
     <button data-tab="markets">比赛竞猜</button>
     <button data-tab="bracket">双败淘汰赛</button>
     <button data-tab="leaderboard">排行榜</button>
@@ -486,7 +485,6 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 
   <div class="container">
     <div class="section active" id="sec-swiss"></div>
-    <div class="section" id="sec-groups"></div>
     <div class="section" id="sec-markets"></div>
     <div class="section" id="sec-bracket"></div>
     <div class="section" id="sec-leaderboard"></div>
@@ -497,7 +495,6 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
           <li>预测每个系列赛中哪支队伍会赢得比赛，每个阶段结束后结算</li>
           <li>每位参与者初始获得 <span class="hl">1000 竞彩币</span></li>
           <li>每场比赛 <span class="hl">赛前 5 分钟封盘</span>，封盘后不可修改预测</li>
-          <li>8强预测：预测瑞士轮各队战绩（3-0/3-1/3-2/0-3），全部命中瓜分奖池</li>
           <li>淘汰赛：预测每场胜者，命中瓜分奖池</li>
         </ul>
         <h3 style="margin-top:20px">🏆 奖项</h3>
@@ -591,11 +588,7 @@ const MATCH_TEAMS = {
 // ── State ─────────────────────────────────────────────────
 let currentUser = null;
 let myPredictions = {};   // match_id -> { pick, amount, payout, settled, won }
-let myRecordPreds = {};   // category -> { teamName: { amount, payout, settled, won } }
-const RECORD_MAX = {'3-0':2, '3-1':3, '3-2':3, '0-3':2};
-let recordPools = {};     // category -> pool total
 let matchesData = {};     // id -> match obj
-let recordStats = {};     // category -> { team: count }
 let lockStatus = { categories: {}, matches: {} };
 let checkinState = { checkedIn: false, totalDays: 0 };
 let marketsData = [];    // array of market objects
@@ -665,11 +658,10 @@ function enterApp() {
 
 // ── Data loading ──────────────────────────────────────────
 async function loadAllData() {
-  const [matchRes, predRes, lbRes, statsRes, lockRes, ciRes, mkRes, betRes] = await Promise.all([
+  const [matchRes, predRes, lbRes, lockRes, ciRes, mkRes, betRes] = await Promise.all([
     api('/api/matches'),
     api('/api/predictions'),
     api('/api/leaderboard'),
-    api('/api/record-stats'),
     api('/api/lock-status'),
     api('/api/checkin'),
     api('/api/markets'),
@@ -686,24 +678,10 @@ async function loadAllData() {
   myPredictions = {};
   for (const p of predRes.predictions) myPredictions[p.match_id] = p;
 
-  myRecordPreds = {'3-0':{},'3-1':{},'3-2':{},'0-3':{}};
-  for (const p of predRes.recordPredictions) {
-    if (!myRecordPreds[p.category]) myRecordPreds[p.category] = {};
-    myRecordPreds[p.category][p.team_name] = { amount: p.amount, payout: p.payout, settled: p.settled, won: p.won };
-  }
-
-  recordStats = {};
-  for (const s of statsRes.stats) {
-    if (!recordStats[s.category]) recordStats[s.category] = {};
-    recordStats[s.category][s.team_name] = { picks: s.picks, total: s.total_amount };
-  }
-  recordPools = statsRes.pools || {};
-
   marketsData = mkRes.markets;
   myBets = {};
   for (const b of betRes.bets) myBets[b.market_id] = b;
 
-  renderGroups();
   renderSwiss();
   renderMarkets();
   renderBracket();
@@ -713,12 +691,10 @@ async function loadAllData() {
 }
 
 function updateStats(predRes, lb) {
-  let recCount = 0;
-  for (const s of Object.values(myRecordPreds)) recCount += Object.keys(s).length;
   const betCount = Object.keys(myBets).length;
-  const total = Object.keys(myPredictions).length + recCount + betCount;
+  const total = Object.keys(myPredictions).length + betCount;
   const betArr = Object.values(myBets);
-  const allPreds = [...(predRes?.predictions || []), ...(predRes?.recordPredictions || []), ...betArr];
+  const allPreds = [...(predRes?.predictions || []), ...betArr];
   const settled = allPreds.filter(p => p.settled);
   const hits = settled.filter(p => p.won);
   const me = lb?.find(u => u.id === currentUser.id);
@@ -740,98 +716,6 @@ document.getElementById('main-nav').addEventListener('click', e => {
 });
 
 // ── Groups + Record Predictions ───────────────────────────
-const RECORD_CATS = [
-  {cat:'3-0', label:'3-0', desc:'预测哪些队伍将在瑞士轮中全胜晋级（必选 2 支）', icon:'🔥', max:2},
-  {cat:'3-1', label:'3-1', desc:'预测哪些队伍将以 3-1 晋级8强（必选 3 支）', icon:'💪', max:3},
-  {cat:'3-2', label:'3-2', desc:'预测哪些队伍将以 3-2 惊险晋级8强（必选 3 支）', icon:'😅', max:3},
-  {cat:'0-3', label:'0-3', desc:'预测哪些队伍将在瑞士轮中全败淘汰（必选 2 支）', icon:'💀', max:2},
-];
-
-let recSelecting = {};  // category -> Set of team names being selected (before confirm)
-
-function renderGroups() {
-  const container = document.getElementById('sec-groups');
-  let html = '';
-
-  html += '<div class="record-section">';
-  for (const rc of RECORD_CATS) {
-    const myPicks = myRecordPreds[rc.cat] || {};
-    const myTeams = Object.keys(myPicks);
-    const hasBet = myTeams.length > 0;
-    const myAmount = hasBet ? myPicks[myTeams[0]]?.amount || 0 : 0;
-    const isSettled = hasBet && myPicks[myTeams[0]]?.settled;
-    const stats = recordStats[rc.cat] || {};
-    const pool = recordPools[rc.cat] || 0;
-    const catLocked = isCatLocked(rc.cat);
-    const lockTag = catLocked ? '<span style="color:var(--red);font-size:12px">🔒 已封盘</span>' : '';
-    const poolTag = pool > 0 ? `<span class="market-pool">奖池 ${pool} 币</span>` : '';
-
-    const selecting = recSelecting[rc.cat] || new Set();
-    const selCount = selecting.size;
-    const isSelectMode = !hasBet && !catLocked;
-
-    html += `<div class="record-card ${catLocked ? 'cat-locked' : ''}">
-      <div class="record-header">
-        <div class="record-badge cat-${rc.cat}">${rc.icon} ${rc.label}</div>
-        <div class="record-desc">${rc.desc}</div>
-        ${poolTag}${lockTag}
-      </div>
-      <div class="team-chips">`;
-
-    for (const t of ALL_TEAMS) {
-      const isMine = !!myPicks[t];
-      const isSelecting = selecting.has(t);
-      const st = stats[t] || { picks: 0, total: 0 };
-
-      let cls = '';
-      if (isMine) cls = catLocked || isSettled ? 'selected chip-disabled' : 'selected';
-      else if (isSelecting) cls = 'selected';
-      else if (catLocked || (hasBet && !isSettled)) cls = 'chip-disabled';
-      else if (!isSelectMode) cls = 'chip-disabled';
-      else if (selCount >= rc.max && !isSelecting) cls = 'chip-disabled';
-
-      const canClick = isSelectMode && !isMine && (isSelecting || selCount < rc.max);
-      const click = canClick ? `onclick="toggleRecSelect('${rc.cat}','${t}')"` : '';
-      const tData = ALL_TEAMS_DATA.find(x => x.name === t || x.oldName === t);
-      const displayName = tData ? (useNewTeamNames ? tData.name : tData.oldName) : t;
-      const votesTag = st.picks > 0 ? `<span class="opt-votes">${st.picks}人 ${st.total}币</span>` : '';
-      html += `<div class="team-chip ${cls}" ${click}>${displayName} ${votesTag}</div>`;
-    }
-    html += '</div>';
-
-    if (isSelectMode) {
-      const ready = selCount === rc.max;
-      html += `<div class="market-bet-area">
-        <span class="bet-info">已选 ${selCount}/${rc.max} 支队伍${ready ? '' : '，请继续选择'}</span>
-        ${ready ? `<input type="number" id="rec-amt-${rc.cat}" placeholder="下注金额" min="1" style="width:100px;padding:5px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:13px">
-        <button class="bet-btn" onclick="submitRecordBet('${rc.cat}')">确认下注</button>` : ''}
-        ${selCount > 0 ? `<button style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:4px;cursor:pointer;font-size:12px" onclick="clearRecSelect('${rc.cat}')">重选</button>` : ''}
-      </div>`;
-    } else if (hasBet && !isSettled && !catLocked) {
-      html += `<div class="market-bet-area">
-        <span class="bet-my">已下注 ${myAmount} 币 → ${myTeams.map(displayTeamName).join('、')}</span>
-        <button style="padding:5px 12px;border:1px solid var(--border);background:transparent;color:var(--red);border-radius:4px;cursor:pointer;font-size:12px" onclick="removeRecordBet('${rc.cat}')">撤回（退还 ${myAmount} 币）</button>
-      </div>`;
-    } else if (hasBet && isSettled) {
-      const firstPick = myPicks[myTeams[0]];
-      const payout = firstPick.payout || 0;
-      const anyWon = payout > 0;
-      const resultText = anyWon
-        ? `<span style="color:var(--teal)">赢得 ${payout} 币（净赚 ${payout - myAmount}）</span>`
-        : `<span style="color:var(--red)">亏损 ${myAmount} 币</span>`;
-      html += `<div class="market-bet-area">
-        <span class="bet-info">下注 ${myAmount} 币 → ${myTeams.map(displayTeamName).join('、')} → ${resultText}</span>
-      </div>`;
-    }
-
-    html += '</div>';
-  }
-  html += '</div>';
-
-  container.innerHTML = html;
-}
-
-function isCatLocked(cat) { return !currentUser?.is_admin && lockStatus.categories[cat]; }
 function isMatchLocked(mid) { return lockStatus.matches[mid]; }
 
 function updateCheckinBtn() {
@@ -856,43 +740,6 @@ async function doCheckin() {
     checkinState.totalDays = data.totalDays;
     updateCheckinBtn();
     toast('签到成功 +100 竞彩币');
-    loadAllData();
-  } catch (e) { toast(e.message); }
-}
-
-function toggleRecSelect(category, team) {
-  if (!recSelecting[category]) recSelecting[category] = new Set();
-  const sel = recSelecting[category];
-  if (sel.has(team)) sel.delete(team);
-  else sel.add(team);
-  renderGroups();
-}
-
-function clearRecSelect(category) {
-  delete recSelecting[category];
-  renderGroups();
-}
-
-async function submitRecordBet(category) {
-  const sel = recSelecting[category];
-  if (!sel || sel.size !== (RECORD_MAX[category] || 2)) {
-    toast(`请选满 ${RECORD_MAX[category]} 支队伍`); return;
-  }
-  const input = document.getElementById('rec-amt-' + category);
-  const amount = input ? parseInt(input.value) : 0;
-  if (!amount || amount <= 0) { toast('请输入下注金额'); return; }
-  try {
-    await api('/api/predict-record', { method: 'POST', body: { category, teams: [...sel], amount } });
-    delete recSelecting[category];
-    toast(`下注 ${amount} 币 → ${[...sel].join('、')}（${category}）`);
-    loadAllData();
-  } catch (e) { toast(e.message); }
-}
-
-async function removeRecordBet(category) {
-  try {
-    await api('/api/predict-record', { method: 'POST', body: { category, action: 'remove' } });
-    toast(`已撤回 ${category} 下注，竞彩币已退还`);
     loadAllData();
   } catch (e) { toast(e.message); }
 }
@@ -1382,7 +1229,6 @@ function renderLeaderboard(lb) {
 }
 
 // ── Admin Panel ───────────────────────────────────────────
-let adminRecordPicks = {'3-0':new Set(),'3-1':new Set(),'3-2':new Set(),'0-3':new Set()};
 let adminData = null;
 
 async function renderAdmin() {
@@ -1393,28 +1239,12 @@ async function renderAdmin() {
   });
   const matchOpts = allMatchIds.map(id => `<option value="${id}">${id} ${matchesData[id].label||''}</option>`).join('');
   const teamOpts = ALL_TEAMS.map(t => `<option value="${t}">${t}</option>`).join('');
-  const catOpts = ['3-0','3-1','3-2','0-3'].map(c => `<option value="${c}">${c}</option>`).join('');
-
-  let recordHtml = '';
-  for (const cat of ['3-0','3-1','3-2','0-3']) {
-    const picks = adminRecordPicks[cat];
-    recordHtml += `<div style="margin-bottom:8px"><strong style="color:var(--gold)">${cat}:</strong> `;
-    for (const t of ALL_TEAMS) {
-      const sel = picks.has(t);
-      recordHtml += `<span style="display:inline-block;margin:2px;padding:3px 8px;border-radius:4px;font-size:12px;cursor:pointer;
-        background:${sel ? 'rgba(10,207,151,.2)' : 'var(--bg2)'};border:1px solid ${sel ? 'var(--teal)' : 'var(--border)'};
-        color:${sel ? 'var(--teal)' : 'var(--text2)'}"
-        onclick="adminToggleRecord('${cat}','${t}')">${sel ? '✓ ' : ''}${t}</span>`;
-    }
-    recordHtml += '</div>';
-  }
 
   sec.innerHTML = `
     <div class="admin-tabs">
       <button class="active" onclick="switchAdminTab(this,'adm-overview')">数据总览</button>
       <button onclick="switchAdminTab(this,'adm-users')">用户明细</button>
       <button onclick="switchAdminTab(this,'adm-match-preds')">淘汰赛预测</button>
-      <button onclick="switchAdminTab(this,'adm-record-preds')">8强预测</button>
       <button onclick="switchAdminTab(this,'adm-markets')">盘口管理</button>
       <button onclick="switchAdminTab(this,'adm-attendance')">全勤统计</button>
       <button onclick="switchAdminTab(this,'adm-coinlogs')">竞彩币流水</button>
@@ -1450,15 +1280,6 @@ async function renderAdmin() {
           <select id="adm-filter-match" onchange="filterMatchPreds()"><option value="">全部场次</option>${matchOpts}</select>
         </div>
         <div class="scroll-box" id="ov-match-preds"></div>
-      </div>
-    </div>
-
-    <div class="admin-sub" id="adm-record-preds">
-      <div class="admin-panel"><h3>8强预测明细</h3>
-        <div class="admin-row" style="margin-bottom:10px">
-          <select id="adm-filter-cat" onchange="filterRecordPreds()"><option value="">全部分类</option>${catOpts}</select>
-        </div>
-        <div class="scroll-box" id="ov-record-preds"></div>
       </div>
     </div>
 
@@ -1542,18 +1363,6 @@ async function renderAdmin() {
         <div class="admin-msg" id="adm-msg2"></div>
       </div>
       <div class="admin-panel">
-        <h3>🔧 瑞士轮战绩结算</h3>
-        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">
-          点击选中每个分类的实际队伍，然后逐个结算。奖池模式：命中者按下注比例瓜分全部奖池。
-        </p>
-        ${recordHtml}
-        <div class="admin-row" style="margin-top:12px">
-          <select id="adm-settle-cat">${catOpts}</select>
-          <button class="admin-btn primary" onclick="adminSettleRecords()">结算该分类</button>
-        </div>
-        <div class="admin-msg" id="adm-msg3"></div>
-      </div>
-      <div class="admin-panel">
         <h3>🔧 用户密码管理</h3>
         <div class="admin-row">
           <input id="adm-reset-user" placeholder="输入英文名账号" style="flex:1;max-width:200px">
@@ -1563,7 +1372,7 @@ async function renderAdmin() {
       </div>
       <div class="admin-panel">
         <h3>🔧 清除所有未结算预测（退还竞彩币）</h3>
-        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">清除所有未结算的比赛预测、8强预测、盘口下注，并退还对应竞彩币。已结算的不受影响。</p>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">清除所有未结算的比赛预测、盘口下注，并退还对应竞彩币。已结算的不受影响。</p>
         <button class="admin-btn danger" onclick="adminClearUnsettled()">一键清除并退币</button>
         <div class="admin-msg" id="adm-msg5"></div>
       </div>
@@ -1590,7 +1399,6 @@ async function loadAdminData() {
     renderOverview();
     renderUserTable();
     renderMatchPredsTable();
-    renderRecordPredsTable();
     renderAdminMarketList();
     loadAttendance();
     const logUserSel = document.getElementById('adm-log-user');
@@ -1611,7 +1419,6 @@ function renderOverview() {
     <div class="ov-card"><div class="ov-num">${d.participatedUsers}</div><div class="ov-label">已参与竞猜</div></div>
     <div class="ov-card"><div class="ov-num">${d.totalUsers - d.participatedUsers}</div><div class="ov-label">未参与</div></div>
     <div class="ov-card"><div class="ov-num">${d.totalPredictions}</div><div class="ov-label">淘汰赛预测数</div></div>
-    <div class="ov-card"><div class="ov-num">${d.totalRecordPreds}</div><div class="ov-label">8强预测数</div></div>
     <div class="ov-card"><div class="ov-num">${d.totalBets || 0}</div><div class="ov-label">盘口下注数</div></div>
     <div class="ov-card"><div class="ov-num">${d.totalMarkets || 0}</div><div class="ov-label">自定义盘口</div></div>
     <div class="ov-card"><div class="ov-num">${d.settledMatches}/${d.totalMatches}</div><div class="ov-label">已结算场次</div></div>`;
@@ -1629,13 +1436,13 @@ function renderOverview() {
 
 function renderUserTable() {
   const users = adminData.userSummary;
-  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>赛事预测</th><th>8强预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
+  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>赛事预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
   users.forEach((u, i) => {
     const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
     h += `<tr>
       <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${displayTeamName(u.team) || '-'}</td>
       <td style="color:${u.points >= 1000 ? 'var(--teal)' : 'var(--red)'}">${u.points}</td>
-      <td>${u.match_preds}</td><td>${u.record_preds}</td>
+      <td>${u.match_preds}</td>
       <td class="won-yes">${u.hits}</td><td>${u.settled}</td><td>${rate}</td>
     </tr>`;
   });
@@ -1703,86 +1510,11 @@ function renderMatchPredsTable(filter) {
 }
 function filterMatchPreds() { renderMatchPredsTable(document.getElementById('adm-filter-match').value); }
 
-function renderRecordPredsTable(filter) {
-  let preds = adminData.recordPreds;
-  if (filter) preds = preds.filter(p => p.category === filter);
-  if (preds.length === 0) {
-    document.getElementById('ov-record-preds').innerHTML = '<div class="no-data">暂无数据</div>';
-    return;
-  }
-
-  const byCat = {};
-  preds.forEach(p => {
-    if (!byCat[p.category]) byCat[p.category] = {};
-    const key = p.display;
-    if (!byCat[p.category][key]) byCat[p.category][key] = { display: p.display, team: p.team, amount: p.amount, payout: p.payout, settled: p.settled, won: p.payout > 0, teams: [] };
-    byCat[p.category][key].teams.push(p.team_name);
-  });
-
-  let h = '';
-  for (const [cat, users] of Object.entries(byCat)) {
-    const userList = Object.values(users);
-    const won = userList.filter(u => u.settled && u.won);
-    const lost = userList.filter(u => u.settled && !u.won);
-    const pending = userList.filter(u => !u.settled);
-    const pool = userList.reduce((s, u) => s + (u.amount || 0), 0);
-
-    h += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;padding:10px 12px">`;
-    h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer" onclick="this.parentElement.querySelector('.pred-detail').classList.toggle('pred-hidden')">`;
-    h += `<strong style="color:var(--gold)">${cat}</strong>`;
-    h += `<span style="font-size:11px;color:var(--gold);margin-left:auto">奖池${pool}币</span>`;
-    h += `<span style="font-size:11px;color:var(--text2)">${userList.length}人</span>`;
-    if (won.length) h += `<span style="font-size:11px;color:var(--teal)">命中${won.length}</span>`;
-    if (lost.length) h += `<span style="font-size:11px;color:var(--red)">未中${lost.length}</span>`;
-    if (pending.length) h += `<span style="font-size:11px;color:var(--text2)">待结算${pending.length}</span>`;
-    h += `<span style="font-size:10px;color:var(--text2)">点击展开</span>`;
-    h += `</div>`;
-
-    h += `<div class="pred-detail pred-hidden">`;
-    if (won.length) {
-      h += `<div style="margin-bottom:6px"><span style="font-size:11px;color:var(--teal);font-weight:bold">命中（${won.length}人）：</span>`;
-      won.forEach(u => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:rgba(10,207,151,.1);color:var(--teal);border:1px solid rgba(10,207,151,.3)">${u.display} [${u.teams.join(',')}] ${u.amount}币→+${u.payout}</span>`; });
-      h += `</div>`;
-    }
-    if (lost.length) {
-      h += `<div style="margin-bottom:6px"><span style="font-size:11px;color:var(--red);font-weight:bold">未中（${lost.length}人）：</span>`;
-      lost.forEach(u => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:rgba(255,70,85,.06);color:var(--red);border:1px solid rgba(255,70,85,.2)">${u.display} [${u.teams.join(',')}] -${u.amount}币</span>`; });
-      h += `</div>`;
-    }
-    if (pending.length) {
-      h += `<div><span style="font-size:11px;color:var(--text2);font-weight:bold">待结算（${pending.length}人）：</span>`;
-      pending.forEach(u => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${u.display} [${u.teams.join(',')}] ${u.amount}币</span>`; });
-      h += `</div>`;
-    }
-    h += `</div></div>`;
-  }
-
-  document.getElementById('ov-record-preds').innerHTML = h;
-}
-function filterRecordPreds() { renderRecordPredsTable(document.getElementById('adm-filter-cat').value); }
-
-function adminToggleRecord(cat, team) {
-  if (adminRecordPicks[cat].has(team)) adminRecordPicks[cat].delete(team);
-  else adminRecordPicks[cat].add(team);
-  renderAdmin();
-}
-
 function renderLockControls() {
   const el = document.getElementById('lock-controls');
   if (!el) return;
-  const cats = ['3-0','3-1','3-2','0-3'];
   const matchIds = Object.keys(MATCH_TEAMS);
-
-  let html = '<div style="margin-bottom:10px"><strong style="color:var(--gold);font-size:13px">8强预测：</strong>';
-  for (const cat of cats) {
-    const locked = lockStatus.categories[cat];
-    html += `<span style="display:inline-flex;align-items:center;gap:4px;margin:3px 6px 3px 0;padding:4px 10px;border-radius:4px;font-size:12px;cursor:pointer;
-      background:${locked ? 'rgba(255,70,85,.12)' : 'rgba(10,207,151,.1)'};
-      border:1px solid ${locked ? 'var(--red)' : 'var(--teal)'};
-      color:${locked ? 'var(--red)' : 'var(--teal)'}"
-      onclick="adminToggleCatLock('${cat}',${!locked})">${locked ? '🔒' : '🔓'} ${cat}</span>`;
-  }
-  html += '</div>';
+  let html = '';
 
   const swissIds = Object.keys(matchesData).filter(id => id.startsWith('SR')).sort();
   if (swissIds.length) {
@@ -1810,16 +1542,6 @@ function renderLockControls() {
   html += '</div>';
 
   el.innerHTML = html;
-}
-
-async function adminToggleCatLock(cat, locked) {
-  try {
-    await api('/api/admin/lock-category', { method: 'POST', body: { category: cat, locked } });
-    lockStatus.categories[cat] = locked;
-    renderLockControls();
-    renderGroups();
-    toast(locked ? `🔒 ${cat} 已封盘` : `🔓 ${cat} 已解封`);
-  } catch (e) { toast(e.message); }
 }
 
 async function adminToggleMatchLock(mid, locked) {
@@ -2130,20 +1852,6 @@ async function adminUpdateTeams() {
     await loadAllData();
     jumpToMatchTab(mid);
   } catch (e) { document.getElementById('adm-msg2').textContent = '❌ ' + e.message; }
-}
-
-async function adminSettleRecords() {
-  const cat = document.getElementById('adm-settle-cat').value;
-  const teams = [...adminRecordPicks[cat]];
-  if (teams.length === 0) {
-    document.getElementById('adm-msg3').textContent = '❌ 请先选中该分类的实际队伍';
-    return;
-  }
-  try {
-    const data = await api('/api/admin/settle-records', { method: 'POST', body: { category: cat, teams } });
-    document.getElementById('adm-msg3').textContent = `✅ ${cat} 已结算 ${data.settled} 条预测，奖池 ${data.pool || 0} 币，${data.winners || 0} 人命中`;
-    loadAllData();
-  } catch (e) { document.getElementById('adm-msg3').textContent = '❌ ' + e.message; }
 }
 
 // Enter key on login
