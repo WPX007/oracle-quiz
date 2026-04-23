@@ -223,7 +223,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
   border-radius:6px;overflow:hidden;transition:.2s;flex-shrink:0;
   margin-bottom:8px;position:relative;
 }
-.match-card.locked{overflow:visible}
+.match-card.ended{overflow:visible}
 .ended-banner{
   position:absolute;top:0;bottom:0;left:-26px;width:22px;
   background:linear-gradient(180deg,rgba(255,70,85,.92),rgba(200,50,65,.92));
@@ -840,8 +840,8 @@ function makeMatchCard(mid) {
   const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
   const t1Real = t1.resolved ? t1.name : '';
   const t2Real = t2.resolved ? t2.name : '';
-  const showEndedBanner = locked || isFinished;
-  let html = `<div class="match-card ${showEndedBanner ? 'locked' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
+  const showEndedBanner = isFinished;
+  let html = `<div class="match-card ${locked ? 'locked' : ''} ${showEndedBanner ? 'ended' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
   if (showEndedBanner) {
     html += `<div class="ended-banner">已结束</div>`;
   }
@@ -1277,7 +1277,7 @@ let leaderboardData = [];
 function renderLeaderboard(lb) {
   leaderboardData = lb;
   const sec = document.getElementById('sec-leaderboard');
-  let html = '<table class="lb-table" id="tbl-lb"><thead><tr><th>排名</th><th>玩家</th><th>队伍</th><th>当前持有</th><th>未结算</th><th>总资产</th><th>命中</th><th>预测数</th><th>命中率</th></tr></thead><tbody>';
+  let html = '<table class="lb-table" id="tbl-lb"><thead><tr><th>排名</th><th>玩家</th><th>队伍</th><th>总资产</th><th>命中</th><th>预测数</th><th>命中率</th></tr></thead><tbody>';
   lb.forEach((u, i) => {
     const rc = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
     const medal = i < 3 ? ['🥇','🥈','🥉'][i] : (i + 1);
@@ -1290,9 +1290,7 @@ function renderLeaderboard(lb) {
       <td class="${rc}">${medal}</td>
       <td>${u.display}${isMe ? ' (我)' : ''}</td>
       <td style="color:var(--text2);font-size:12px">${displayTeamName(u.team) || ''}</td>
-      <td class="${u.points >= 1000 ? 'positive' : 'negative'}">${u.points}</td>
-      <td style="color:${pending > 0 ? 'var(--gold)' : 'var(--text2)'}">${pending > 0 ? pending : '-'}</td>
-      <td style="color:${total >= 1000 ? 'var(--teal)' : 'var(--red)'};font-weight:bold">${total}</td>
+      <td class="${total >= 1000 ? 'positive' : 'negative'}" style="font-weight:bold">${total}</td>
       <td>${u.hits}</td>
       <td>${u.total_preds}</td>
       <td>${rate}</td>
