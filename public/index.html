@@ -1269,6 +1269,22 @@ function sortTable(tableId, colIdx) {
   });
 
   rows.forEach(r => tbody.appendChild(r));
+
+  const firstHeader = ths[0]?.textContent.trim().replace(/[▲▼]/g, '').trim();
+  if (colIdx !== 0 && (firstHeader === '排名' || firstHeader === '#' || firstHeader === '序号')) {
+    const useMedal = firstHeader === '排名';
+    rows.forEach((r, i) => {
+      const cell = r.cells[0];
+      if (!cell) return;
+      if (useMedal && i < 3) {
+        cell.textContent = ['🥇','🥈','🥉'][i];
+        cell.className = ['r1','r2','r3'][i];
+      } else {
+        cell.textContent = i + 1;
+        cell.className = '';
+      }
+    });
+  }
 }
 
 // ── Leaderboard ───────────────────────────────────────────
