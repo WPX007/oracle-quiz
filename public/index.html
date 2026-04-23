@@ -221,7 +221,16 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .match-card{
   width:192px;background:var(--card);border:1px solid var(--border);
   border-radius:6px;overflow:hidden;transition:.2s;flex-shrink:0;
-  margin-bottom:8px;
+  margin-bottom:8px;position:relative;
+}
+.match-card .ended-banner{
+  position:absolute;top:0;left:0;right:0;
+  background:linear-gradient(90deg,rgba(255,70,85,.92),rgba(200,50,65,.92));
+  color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;
+  text-align:center;padding:4px 0;
+  text-shadow:0 1px 2px rgba(0,0,0,.4);
+  z-index:3;pointer-events:none;
+  box-shadow:0 2px 4px rgba(0,0,0,.25);
 }
 .match-card:hover{border-color:var(--gold3)}
 .match-card .match-hdr{
@@ -829,9 +838,15 @@ function makeMatchCard(mid) {
   const t1Real = t1.resolved ? t1.name : '';
   const t2Real = t2.resolved ? t2.name : '';
   let html = `<div class="match-card ${locked ? 'locked' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
+  if (locked) {
+    html += `<div class="ended-banner">已结束</div>`;
+  }
   const startTime = mData.start_time || '';
   if (startTime) {
-    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3)">⏰ ${startTime}</div>`;
+    const tMargin = locked ? 'margin-top:24px;' : '';
+    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3);${tMargin}">⏰ ${startTime}</div>`;
+  } else if (locked) {
+    html += `<div style="height:24px"></div>`;
   }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
