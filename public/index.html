@@ -176,7 +176,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 
 /* ===== Swiss Round ===== */
 .swiss-bracket{overflow-x:auto;padding:16px 0}
-.swiss-row{display:flex;align-items:flex-start;gap:20px;min-width:1200px}
+.swiss-row{display:flex;align-items:flex-start;gap:20px;min-width:1200px;padding-left:30px}
 .swiss-round{
   display:flex;flex-direction:column;align-items:center;min-width:200px;flex-shrink:0;
 }
@@ -219,18 +219,21 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .arrow{color:var(--text2);font-size:18px;padding:0 2px;flex-shrink:0}
 
 .match-card{
-  width:192px;background:var(--card);border:1px solid var(--border);
+  width:200px;background:var(--card);border:1px solid var(--border);
   border-radius:6px;overflow:hidden;transition:.2s;flex-shrink:0;
   margin-bottom:8px;position:relative;
 }
-.match-card .ended-banner{
-  position:absolute;top:0;left:0;right:0;
-  background:linear-gradient(90deg,rgba(255,70,85,.92),rgba(200,50,65,.92));
-  color:#fff;font-size:12px;font-weight:bold;letter-spacing:3px;
-  text-align:center;padding:4px 0;
+.match-card.locked{overflow:visible}
+.ended-banner{
+  position:absolute;top:0;bottom:0;left:-26px;width:22px;
+  background:linear-gradient(180deg,rgba(255,70,85,.92),rgba(200,50,65,.92));
+  color:#fff;font-size:12px;font-weight:bold;letter-spacing:4px;
+  display:flex;align-items:center;justify-content:center;
+  writing-mode:vertical-rl;text-orientation:upright;
   text-shadow:0 1px 2px rgba(0,0,0,.4);
-  z-index:3;pointer-events:none;
   box-shadow:0 2px 4px rgba(0,0,0,.25);
+  border-radius:4px;
+  pointer-events:none;
 }
 .match-card:hover{border-color:var(--gold3)}
 .match-card .match-hdr{
@@ -837,16 +840,14 @@ function makeMatchCard(mid) {
   const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
   const t1Real = t1.resolved ? t1.name : '';
   const t2Real = t2.resolved ? t2.name : '';
-  let html = `<div class="match-card ${locked ? 'locked' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
-  if (locked) {
+  const showEndedBanner = locked || isFinished;
+  let html = `<div class="match-card ${showEndedBanner ? 'locked' : ''}" onclick="showTeamDetail('${t1Real.replace(/'/g, "\\'")}','${t2Real.replace(/'/g, "\\'")}','${mid}')" style="cursor:pointer">`;
+  if (showEndedBanner) {
     html += `<div class="ended-banner">已结束</div>`;
   }
   const startTime = mData.start_time || '';
   if (startTime) {
-    const tMargin = locked ? 'margin-top:24px;' : '';
-    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3);${tMargin}">⏰ ${startTime}</div>`;
-  } else if (locked) {
-    html += `<div style="height:24px"></div>`;
+    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3)">⏰ ${startTime}</div>`;
   }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
@@ -1276,18 +1277,22 @@ let leaderboardData = [];
 function renderLeaderboard(lb) {
   leaderboardData = lb;
   const sec = document.getElementById('sec-leaderboard');
-  let html = '<table class="lb-table" id="tbl-lb"><thead><tr><th>排名</th><th>玩家</th><th>队伍</th><th>竞彩币</th><th>命中</th><th>预测数</th><th>命中率</th></tr></thead><tbody>';
+  let html = '<table class="lb-table" id="tbl-lb"><thead><tr><th>排名</th><th>玩家</th><th>队伍</th><th>当前持有</th><th>未结算</th><th>总资产</th><th>命中</th><th>预测数</th><th>命中率</th></tr></thead><tbody>';
   lb.forEach((u, i) => {
     const rc = i === 0 ? 'r1' : i === 1 ? 'r2' : i === 2 ? 'r3' : '';
     const medal = i < 3 ? ['🥇','🥈','🥉'][i] : (i + 1);
     const isMe = currentUser && u.id === currentUser.id;
     const rateNum = u.settled > 0 ? Math.round(u.hits / u.settled * 100) : 0;
     const rate = u.settled > 0 ? rateNum + '%' : '-';
+    const pending = u.pending_amount || 0;
+    const total = u.points + pending;
     html += `<tr class="${isMe ? 'me-row' : ''}">
       <td class="${rc}">${medal}</td>
       <td>${u.display}${isMe ? ' (我)' : ''}</td>
       <td style="color:var(--text2);font-size:12px">${displayTeamName(u.team) || ''}</td>
       <td class="${u.points >= 1000 ? 'positive' : 'negative'}">${u.points}</td>
+      <td style="color:${pending > 0 ? 'var(--gold)' : 'var(--text2)'}">${pending > 0 ? pending : '-'}</td>
+      <td style="color:${total >= 1000 ? 'var(--teal)' : 'var(--red)'};font-weight:bold">${total}</td>
       <td>${u.hits}</td>
       <td>${u.total_preds}</td>
       <td>${rate}</td>
@@ -1568,12 +1573,16 @@ function renderOverview() {
 
 function renderUserTable() {
   const users = adminData.userSummary;
-  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>赛事预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
+  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>未结算</th><th>总资产</th><th>赛事预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
   users.forEach((u, i) => {
     const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
+    const pending = u.pending_amount || 0;
+    const total = u.points + pending;
     h += `<tr>
       <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${displayTeamName(u.team) || '-'}</td>
       <td style="color:${u.points >= 1000 ? 'var(--teal)' : 'var(--red)'}">${u.points}</td>
+      <td style="color:${pending > 0 ? 'var(--gold)' : 'var(--text2)'}">${pending > 0 ? pending : '-'}</td>
+      <td style="color:${total >= 1000 ? 'var(--teal)' : 'var(--red)'};font-weight:bold">${total}</td>
       <td>${u.match_preds}</td>
       <td class="won-yes">${u.hits}</td><td>${u.settled}</td><td>${rate}</td>
     </tr>`;
@@ -1943,7 +1952,7 @@ async function showMyLogs() {
     if (!data.logs.length) {
       html += '<div style="color:var(--text2);text-align:center;padding:20px">暂无记录</div>';
     } else {
-      html += '<table class="detail-table"><thead><tr><th>时间</th><th>变动</th><th>余额</th><th>原因</th><th>详情</th></tr></thead><tbody>';
+      html += '<table class="detail-table" id="tbl-my-logs"><thead><tr><th>时间</th><th>变动</th><th>余额</th><th>原因</th><th>详情</th></tr></thead><tbody>';
       data.logs.forEach(l => {
         const color = l.delta > 0 ? 'var(--teal)' : 'var(--red)';
         const sign = l.delta > 0 ? '+' : '';
@@ -1954,6 +1963,7 @@ async function showMyLogs() {
     html += '<div style="text-align:center;margin-top:12px"><button style="padding:6px 20px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:4px;cursor:pointer" onclick="document.getElementById(\'coin-log-modal\').remove()">关闭</button></div>';
     html += '</div></div>';
     document.body.insertAdjacentHTML('beforeend', html);
+    makeSortable('tbl-my-logs');
   } catch (e) { toast(e.message); }
 }
 
@@ -1963,7 +1973,7 @@ async function loadAdminCoinLogs() {
     const data = await api('/api/admin/coin-logs' + (userId ? '?user_id=' + userId : ''));
     const el = document.getElementById('adm-coinlog-list');
     if (!data.logs.length) { el.innerHTML = '<div class="no-data">暂无记录</div>'; return; }
-    let h = '<table class="detail-table"><thead><tr><th>时间</th><th>用户</th><th>变动</th><th>余额</th><th>原因</th><th>详情</th></tr></thead><tbody>';
+    let h = '<table class="detail-table" id="tbl-admin-logs"><thead><tr><th>时间</th><th>用户</th><th>变动</th><th>余额</th><th>原因</th><th>详情</th></tr></thead><tbody>';
     data.logs.forEach(l => {
       const color = l.delta > 0 ? 'var(--teal)' : 'var(--red)';
       const sign = l.delta > 0 ? '+' : '';
@@ -1971,6 +1981,7 @@ async function loadAdminCoinLogs() {
     });
     h += '</tbody></table>';
     el.innerHTML = h;
+    makeSortable('tbl-admin-logs');
   } catch (e) { console.error(e); }
 }
 

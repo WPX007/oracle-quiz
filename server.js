@@ -709,7 +709,9 @@ app.get('/api/admin/all-predictions', requireAuth, requireAdmin, (req, res) => {
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id) as match_preds,
       0 as record_preds,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 1) as hits,
-      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) as settled
+      (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) as settled,
+      COALESCE((SELECT SUM(amount) FROM predictions WHERE user_id = u.id AND settled = 0), 0) +
+      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 0), 0) as pending_amount
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();
@@ -733,7 +735,9 @@ app.get('/api/leaderboard', (req, res) => {
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id) +
       (SELECT COUNT(*) FROM bets WHERE user_id = u.id) as total_preds,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) +
-      (SELECT COUNT(*) FROM bets WHERE user_id = u.id AND settled = 1) as settled
+      (SELECT COUNT(*) FROM bets WHERE user_id = u.id AND settled = 1) as settled,
+      COALESCE((SELECT SUM(amount) FROM predictions WHERE user_id = u.id AND settled = 0), 0) +
+      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 0), 0) as pending_amount
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();
