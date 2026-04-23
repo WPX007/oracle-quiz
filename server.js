@@ -326,6 +326,20 @@ app.post('/api/predict', requireAuth, (req, res) => {
     return res.status(400).json({ error: '预测后不可撤销' });
   }
 
+  if (action === 'addon') {
+    if (!existing) return res.status(400).json({ error: '还未下注，无法加仓' });
+    const addAmount = Math.floor(Number(amount));
+    if (!addAmount || addAmount < 100) return res.status(400).json({ error: '加仓金额最低 100 币' });
+    const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
+    if (addAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
+    const tx = db.transaction(() => {
+      logCoins(req.session.userId, -addAmount, '比赛加仓', `${match_id} +${addAmount}`);
+      db.prepare('UPDATE predictions SET amount = amount + ? WHERE id = ?').run(addAmount, existing.id);
+    });
+    tx();
+    return res.json({ ok: true });
+  }
+
   if (existing) return res.status(400).json({ error: '已预测，不可修改' });
   if (!pick) return res.status(400).json({ error: '请选择预测队伍' });
   const betAmount = Math.floor(Number(amount));
@@ -493,23 +507,36 @@ app.get('/api/my-bets', requireAuth, (req, res) => {
 
 app.post('/api/bet', requireAuth, (req, res) => {
   if (req.session.isAdmin) return res.status(403).json({ error: '管理员不可下注' });
-  const { market_id, option_id, amount } = req.body;
-  if (!market_id || !option_id || !amount) return res.status(400).json({ error: '参数缺失' });
+  const { market_id, option_id, amount, action } = req.body;
+  if (!market_id || !amount) return res.status(400).json({ error: '参数缺失' });
   const betAmount = Math.floor(Number(amount));
-  if (betAmount < 20) return res.status(400).json({ error: '下注金额最低 20 币' });
 
   const market = db.prepare('SELECT * FROM markets WHERE id = ?').get(market_id);
   if (!market) return res.status(404).json({ error: '盘口不存在' });
   if (market.locked) return res.status(400).json({ error: '该盘口已封盘' });
   if (market.settled) return res.status(400).json({ error: '该盘口已结算' });
 
-  const option = db.prepare('SELECT * FROM market_options WHERE id = ? AND market_id = ?').get(option_id, market_id);
-  if (!option) return res.status(400).json({ error: '选项不存在' });
-
-  const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
   const existing = db.prepare('SELECT * FROM bets WHERE user_id = ? AND market_id = ?').get(req.session.userId, market_id);
+  const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
+
+  if (action === 'addon') {
+    if (!existing) return res.status(400).json({ error: '还未下注，无法加仓' });
+    if (betAmount < 100) return res.status(400).json({ error: '加仓金额最低 100 币' });
+    if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
+    const tx = db.transaction(() => {
+      logCoins(req.session.userId, -betAmount, '盘口加仓', `盘口${market_id} +${betAmount}`);
+      db.prepare('UPDATE bets SET amount = amount + ? WHERE id = ?').run(betAmount, existing.id);
+    });
+    tx();
+    return res.json({ ok: true });
+  }
+
+  if (!option_id) return res.status(400).json({ error: '参数缺失' });
+  if (betAmount < 20) return res.status(400).json({ error: '下注金额最低 20 币' });
   if (existing) return res.status(400).json({ error: '已下注，不可修改' });
 
+  const option = db.prepare('SELECT * FROM market_options WHERE id = ? AND market_id = ?').get(option_id, market_id);
+  if (!option) return res.status(400).json({ error: '选项不存在' });
   if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
 
   const tx = db.transaction(() => {
@@ -795,6 +822,67 @@ app.get('/api/admin/coin-logs', requireAuth, requireAdmin, (req, res) => {
     logs = db.prepare('SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id ORDER BY c.id DESC LIMIT 500').all();
   }
   res.json({ logs });
+});
+
+// ── Admin: give coins ─────────────────────────────────────
+app.post('/api/admin/give-coins', requireAuth, requireAdmin, (req, res) => {
+  const { username, amount, reason } = req.body;
+  if (!username || amount === undefined) return res.status(400).json({ error: '参数缺失' });
+  const delta = Math.floor(Number(amount));
+  if (!delta || isNaN(delta)) return res.status(400).json({ error: '金额无效' });
+
+  if (username === '__all__') {
+    const users = db.prepare('SELECT id, points FROM users WHERE is_admin = 0').all();
+    if (delta < 0) {
+      const cannot = users.filter(u => u.points + delta < 0);
+      if (cannot.length) return res.status(400).json({ error: `${cannot.length} 名用户余额不足` });
+    }
+    const tx = db.transaction(() => {
+      for (const u of users) logCoins(u.id, delta, '管理员批量发放', reason || '');
+    });
+    tx();
+    return res.json({ ok: true, count: users.length });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim().toLowerCase());
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+  if (delta < 0 && user.points + delta < 0) return res.status(400).json({ error: `用户余额 ${user.points}，无法扣除 ${-delta}` });
+
+  logCoins(user.id, delta, '管理员发放', reason || '');
+  const newBal = db.prepare('SELECT points FROM users WHERE id = ?').get(user.id).points;
+  res.json({ ok: true, display: user.display, newBalance: newBal });
+});
+
+// ── Admin: add user ───────────────────────────────────────
+app.post('/api/admin/add-user', requireAuth, requireAdmin, (req, res) => {
+  const { username, display, team, initial_points } = req.body;
+  if (!username || !display) return res.status(400).json({ error: '请填写英文名和中文名' });
+  const uname = username.trim().toLowerCase();
+  const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(uname);
+  if (existing) return res.status(400).json({ error: '该英文名已存在' });
+
+  const points = Math.floor(Number(initial_points)) || 1000;
+  const r = db.prepare('INSERT INTO users (username, display, team, password, points, is_admin) VALUES (?, ?, ?, ?, 0, 0)')
+    .run(uname, display.trim(), team || '', '000000');
+  logCoins(r.lastInsertRowid, points, '初始竞彩币', '新用户');
+  res.json({ ok: true, id: r.lastInsertRowid });
+});
+
+app.post('/api/admin/delete-user', requireAuth, requireAdmin, (req, res) => {
+  const { username } = req.body;
+  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  if (!user) return res.status(404).json({ error: '用户不存在' });
+  if (user.is_admin) return res.status(400).json({ error: '不可删除管理员' });
+
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM predictions WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM bets WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM checkins WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM coin_logs WHERE user_id = ?').run(user.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(user.id);
+  });
+  tx();
+  res.json({ ok: true });
 });
 
 // ── Admin: reset password ─────────────────────────────────

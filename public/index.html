@@ -887,8 +887,12 @@ function makeMatchCard(mid) {
       <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
     </div>`;
   } else if (pred && !isFinished && canBet) {
-    html += `<div style="display:flex;align-items:center;padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px">
-      <span style="color:var(--teal)">已押${pred.amount}币（不可撤销）</span>
+    html += `<div style="padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px">
+      <div style="color:var(--teal);margin-bottom:3px">已押${pred.amount}币（不可撤销）</div>
+      <div style="display:flex;align-items:center;gap:3px" onclick="event.stopPropagation()">
+        <input type="number" id="addon-amt-${mid}" placeholder="≥100" min="100" style="width:60px;padding:1px 3px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+        <span style="color:var(--gold);cursor:pointer;font-weight:bold" onclick="addonMatchPick('${mid}')">加仓</span>
+      </div>
     </div>`;
   } else if (pred && isFinished) {
     const wonText = pred.won
@@ -954,6 +958,17 @@ function cancelMatchPick(mid) {
   delete pendingMatchPick[mid];
   renderSwiss();
   renderBracket();
+}
+
+async function addonMatchPick(mid) {
+  const input = document.getElementById('addon-amt-' + mid);
+  const amount = input ? parseInt(input.value) : 0;
+  if (!amount || amount < 100) { toast('加仓金额最低 100 币'); return; }
+  try {
+    await api('/api/predict', { method: 'POST', body: { match_id: mid, amount, action: 'addon' } });
+    toast(`加仓成功 +${amount} 币`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
 }
 
 async function confirmMatchPick(mid) {
@@ -1131,6 +1146,8 @@ function renderMarkets() {
           const pickedOpt = m.options.find(o => o.id === bet.option_id);
           html += `<div class="market-bet-area">
             <span class="bet-my">已下注 ${bet.amount} 币 → ${pickedOpt?.label || '?'}（不可撤销）</span>
+            <input type="number" id="addon-mk-${m.id}" placeholder="加仓金额 ≥100" min="100" style="width:120px">
+            <button class="bet-btn" onclick="addonMarketBet(${m.id})">加仓</button>
           </div>`;
         } else if (selOpt) {
           const selOptLabel = m.options.find(o => o.id === selOpt)?.label || '';
@@ -1167,6 +1184,17 @@ function selectBetOption(marketId, optionId) {
 function cancelBetSelect(marketId) {
   delete selectedBetOption[marketId];
   renderMarkets();
+}
+
+async function addonMarketBet(marketId) {
+  const input = document.getElementById('addon-mk-' + marketId);
+  const amount = input ? parseInt(input.value) : 0;
+  if (!amount || amount < 100) { toast('加仓金额最低 100 币'); return; }
+  try {
+    await api('/api/bet', { method: 'POST', body: { market_id: marketId, amount, action: 'addon' } });
+    toast(`加仓成功 +${amount} 币`);
+    loadAllData();
+  } catch (e) { toast(e.message); }
 }
 
 async function confirmBet(marketId, optionId) {
@@ -1274,6 +1302,7 @@ async function renderAdmin() {
       <button onclick="switchAdminTab(this,'adm-users')">用户明细</button>
       <button onclick="switchAdminTab(this,'adm-match-preds')">淘汰赛预测</button>
       <button onclick="switchAdminTab(this,'adm-markets')">盘口管理</button>
+      <button onclick="switchAdminTab(this,'adm-users-manage')">用户管理</button>
       <button onclick="switchAdminTab(this,'adm-attendance')">全勤统计</button>
       <button onclick="switchAdminTab(this,'adm-coinlogs')">竞彩币流水</button>
       <button onclick="switchAdminTab(this,'adm-ops')">赛事操作</button>
@@ -1345,6 +1374,30 @@ async function renderAdmin() {
       </div>
     </div>
 
+    <div class="admin-sub" id="adm-users-manage">
+      <div class="admin-panel">
+        <h3>新增用户</h3>
+        <div class="admin-row">
+          <input id="adm-new-user" placeholder="英文名（账号）" style="max-width:160px">
+          <input id="adm-new-display" placeholder="中文名" style="max-width:130px">
+          <input id="adm-new-team" placeholder="队伍（可选）" style="max-width:180px">
+          <input id="adm-new-points" type="number" placeholder="初始币" value="1000" style="max-width:100px">
+          <button class="admin-btn primary" onclick="adminAddUser()">新增</button>
+        </div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px">默认密码 000000，新用户可直接登录</div>
+        <div class="admin-msg" id="adm-msg-newuser"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>删除用户</h3>
+        <div class="admin-row">
+          <select id="adm-del-user" style="max-width:250px"><option value="">选择要删除的用户</option></select>
+          <button class="admin-btn danger" onclick="adminDelUser()">删除该用户</button>
+        </div>
+        <div style="font-size:11px;color:var(--red);margin-top:4px">⚠ 会同步删除该用户的所有预测、下注、流水记录</div>
+        <div class="admin-msg" id="adm-msg-deluser"></div>
+      </div>
+    </div>
+
     <div class="admin-sub" id="adm-attendance">
       <div class="admin-panel">
         <h3>全勤统计</h3>
@@ -1393,6 +1446,16 @@ async function renderAdmin() {
           <button class="admin-btn warn" onclick="adminUpdateTime()">只改时间</button>
         </div>
         <div class="admin-msg" id="adm-msg2"></div>
+      </div>
+      <div class="admin-panel">
+        <h3>🔧 发放/扣除竞彩币</h3>
+        <div class="admin-row">
+          <select id="adm-give-user" style="max-width:200px"><option value="">选择用户</option></select>
+          <input id="adm-give-amount" type="number" placeholder="金额（负数=扣除）" style="max-width:150px">
+          <input id="adm-give-reason" placeholder="原因（选填）" style="flex:1;max-width:250px">
+          <button class="admin-btn primary" onclick="adminGiveCoins()">发放</button>
+        </div>
+        <div class="admin-msg" id="adm-msg-give"></div>
       </div>
       <div class="admin-panel">
         <h3>🔧 用户密码管理</h3>
@@ -1450,6 +1513,14 @@ async function loadAdminData() {
     const logUserSel = document.getElementById('adm-log-user');
     if (logUserSel && adminData.userSummary) {
       logUserSel.innerHTML = '<option value="">全部用户</option>' + adminData.userSummary.map(u => `<option value="${u.id}">${u.display}</option>`).join('');
+    }
+    const giveUserSel = document.getElementById('adm-give-user');
+    if (giveUserSel && adminData.userSummary) {
+      giveUserSel.innerHTML = '<option value="">选择用户</option><option value="__all__">全部用户（每人发放）</option>' + adminData.userSummary.map(u => `<option value="${u.username}">${u.display}（${u.username}） 余额${u.points}</option>`).join('');
+    }
+    const delUserSel = document.getElementById('adm-del-user');
+    if (delUserSel && adminData.userSummary) {
+      delUserSel.innerHTML = '<option value="">选择要删除的用户</option>' + adminData.userSummary.map(u => `<option value="${u.username}">${u.display}（${u.username}）</option>`).join('');
     }
     loadAdminCoinLogs();
   } catch(e) { console.error(e); }
@@ -1729,6 +1800,58 @@ function updateResultDropdown() {
   if (s2) s2.style.display = hasTeams ? '' : 'none';
   const colon = document.getElementById('adm-score-colon');
   if (colon) colon.style.display = hasTeams ? '' : 'none';
+}
+
+async function adminAddUser() {
+  const username = document.getElementById('adm-new-user').value.trim();
+  const display = document.getElementById('adm-new-display').value.trim();
+  const team = document.getElementById('adm-new-team').value.trim();
+  const pts = parseInt(document.getElementById('adm-new-points').value) || 1000;
+  const msgEl = document.getElementById('adm-msg-newuser');
+  if (!username) { msgEl.textContent = '❌ 请输入英文名'; return; }
+  if (!display) { msgEl.textContent = '❌ 请输入中文名'; return; }
+  try {
+    await api('/api/admin/add-user', { method: 'POST', body: { username, display, team, initial_points: pts } });
+    msgEl.textContent = `✅ 用户 ${display}（${username}）已创建，初始竞彩币 ${pts}，密码 000000`;
+    document.getElementById('adm-new-user').value = '';
+    document.getElementById('adm-new-display').value = '';
+    document.getElementById('adm-new-team').value = '';
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function adminDelUser() {
+  const username = document.getElementById('adm-del-user').value;
+  const msgEl = document.getElementById('adm-msg-deluser');
+  if (!username) { msgEl.textContent = '❌ 请选择用户'; return; }
+  if (!confirm(`确认删除用户 ${username}？该用户的所有数据将被清除且无法恢复。`)) return;
+  try {
+    await api('/api/admin/delete-user', { method: 'POST', body: { username } });
+    msgEl.textContent = `✅ 用户 ${username} 已删除`;
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function adminGiveCoins() {
+  const username = document.getElementById('adm-give-user').value;
+  const amount = parseInt(document.getElementById('adm-give-amount').value);
+  const reason = document.getElementById('adm-give-reason').value.trim();
+  const msgEl = document.getElementById('adm-msg-give');
+  if (!username) { msgEl.textContent = '❌ 请选择用户'; return; }
+  if (!amount) { msgEl.textContent = '❌ 请输入金额'; return; }
+  if (username === '__all__' && !confirm(`确认给全部用户${amount > 0 ? '发放' : '扣除'} ${Math.abs(amount)} 币？`)) return;
+  try {
+    const data = await api('/api/admin/give-coins', { method: 'POST', body: { username, amount, reason } });
+    const sign = amount > 0 ? '+' : '';
+    if (username === '__all__') {
+      msgEl.textContent = `✅ 已给 ${data.count} 人${sign}${amount} 币`;
+    } else {
+      msgEl.textContent = `✅ ${data.display}（${username}）${sign}${amount} 币，余额 ${data.newBalance}`;
+    }
+    document.getElementById('adm-give-amount').value = '';
+    document.getElementById('adm-give-reason').value = '';
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
 }
 
 async function adminResetPwd() {
