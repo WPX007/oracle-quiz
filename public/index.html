@@ -249,7 +249,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .match-slot:hover{background:var(--card-hover)}
 .match-slot.picked{background:rgba(10,207,151,.1)}
 .match-slot.picked::after{
-  content:'✓';position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  content:'✓';position:absolute;right:6px;bottom:3px;
   color:var(--teal);font-size:11px;font-weight:bold;
 }
 .match-slot.correct{background:rgba(10,207,151,.12);border-left:3px solid var(--teal)}
@@ -898,7 +898,8 @@ function makeMatchCard(mid) {
 
   if (pendingTeam && !pred) {
     html += `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(200,170,110,.05);font-size:10px" onclick="event.stopPropagation()">
-      <input type="number" id="match-amt-${mid}" placeholder="≥20" min="20" value="100" style="width:60px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+      <input type="number" id="match-amt-${mid}" placeholder="≥20" min="20" value="100" style="width:50px;padding:2px 4px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+      <span style="color:var(--red);cursor:pointer;font-weight:bold" onclick="fillAllIn('match-amt-${mid}')">梭哈</span>
       <span style="color:var(--teal);cursor:pointer;font-weight:bold" onclick="confirmMatchPick('${mid}')">确认</span>
       <span style="color:var(--text2);cursor:pointer" onclick="cancelMatchPick('${mid}')">取消</span>
     </div>`;
@@ -906,7 +907,8 @@ function makeMatchCard(mid) {
     html += `<div style="padding:4px 6px;background:rgba(10,207,151,.05);font-size:10px">
       <div style="color:var(--teal);margin-bottom:3px">已押${pred.amount}币（不可撤销）</div>
       <div style="display:flex;align-items:center;gap:3px" onclick="event.stopPropagation()">
-        <input type="number" id="addon-amt-${mid}" placeholder="≥100" min="100" style="width:60px;padding:1px 3px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+        <input type="number" id="addon-amt-${mid}" placeholder="≥100" min="100" style="width:50px;padding:1px 3px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:10px;text-align:center">
+        <span style="color:var(--red);cursor:pointer;font-weight:bold" onclick="fillAllIn('addon-amt-${mid}')">梭哈</span>
         <span style="color:var(--gold);cursor:pointer;font-weight:bold" onclick="addonMatchPick('${mid}')">加仓</span>
       </div>
     </div>`;
@@ -974,6 +976,15 @@ function cancelMatchPick(mid) {
   delete pendingMatchPick[mid];
   renderSwiss();
   renderBracket();
+}
+
+function fillAllIn(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const pts = currentUser?.points || 0;
+  if (pts <= 0) { toast('当前没有可用竞彩币'); return; }
+  input.value = pts;
+  input.focus();
 }
 
 async function addonMatchPick(mid) {
@@ -1061,8 +1072,8 @@ const SWISS_DEF = [
     { label: '0-2', tag: 'eliminate', note: '败者淘汰', ids: ['SR3_02_1','SR3_02_2'] },
   ]},
   { round: 'R4', groups: [
-    { label: '2-1', tag: 'promote', note: '胜者=第3、4、5名', ids: ['SR4_21_1','SR4_21_2','SR4_21_3','SR4_21_4'] },
-    { label: '1-2', tag: 'eliminate', note: '败者淘汰', ids: ['SR4_12_1','SR4_12_2','SR4_12_3','SR4_12_4'] },
+    { label: '2-1', tag: 'promote', note: '胜者=第3、4、5名', ids: ['SR4_21_1','SR4_21_2','SR4_21_3'] },
+    { label: '1-2', tag: 'eliminate', note: '败者淘汰', ids: ['SR4_12_1','SR4_12_2','SR4_12_3'] },
   ]},
   { round: 'R5', groups: [
     { label: '2-2', tag: 'promote', note: '胜者=第6、7、8名', ids: ['SR5_22_1','SR5_22_2','SR5_22_3'] },
@@ -1163,6 +1174,7 @@ function renderMarkets() {
           html += `<div class="market-bet-area">
             <span class="bet-my">已下注 ${bet.amount} 币 → ${pickedOpt?.label || '?'}（不可撤销）</span>
             <input type="number" id="addon-mk-${m.id}" placeholder="加仓金额 ≥100" min="100" style="width:120px">
+            <button class="bet-btn" style="background:var(--red);border-color:var(--red)" onclick="fillAllIn('addon-mk-${m.id}')">梭哈</button>
             <button class="bet-btn" onclick="addonMarketBet(${m.id})">加仓</button>
           </div>`;
         } else if (selOpt) {
@@ -1170,6 +1182,7 @@ function renderMarkets() {
           html += `<div class="market-bet-area">
             <span class="bet-info">选中：<strong style="color:var(--teal)">${selOptLabel}</strong>，输入下注金额：</span>
             <input type="number" id="bet-amt-${m.id}" placeholder="下注金额" min="1">
+            <button class="bet-btn" style="background:var(--red);border-color:var(--red)" onclick="fillAllIn('bet-amt-${m.id}')">梭哈</button>
             <button class="bet-btn" onclick="confirmBet(${m.id},${selOpt})">确认下注</button>
             <button style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:4px;cursor:pointer;font-size:12px" onclick="cancelBetSelect(${m.id})">取消</button>
           </div>`;

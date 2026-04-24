@@ -184,16 +184,14 @@ const SWISS_MATCHES = [
   // R3: 0-2 (2 BO3) -> losers eliminated
   ['SR3_02_1','R3 · 0-2','','',3,'swiss_r3'],
   ['SR3_02_2','R3 · 0-2','','',3,'swiss_r3'],
-  // R4: 2-1 (4 BO3) -> winners = 3rd/4th/5th
+  // R4: 2-1 (3 BO3) -> winners = 3rd/4th/5th
   ['SR4_21_1','R4 · 2-1','','',3,'swiss_r4'],
   ['SR4_21_2','R4 · 2-1','','',3,'swiss_r4'],
   ['SR4_21_3','R4 · 2-1','','',3,'swiss_r4'],
-  ['SR4_21_4','R4 · 2-1','','',3,'swiss_r4'],
-  // R4: 1-2 (4 BO3) -> losers eliminated
+  // R4: 1-2 (3 BO3) -> losers eliminated
   ['SR4_12_1','R4 · 1-2','','',3,'swiss_r4'],
   ['SR4_12_2','R4 · 1-2','','',3,'swiss_r4'],
   ['SR4_12_3','R4 · 1-2','','',3,'swiss_r4'],
-  ['SR4_12_4','R4 · 1-2','','',3,'swiss_r4'],
   // R5: 2-2 (3 BO3) -> winners = 6th/7th/8th
   ['SR5_22_1','R5 · 2-2','','',3,'swiss_r5'],
   ['SR5_22_2','R5 · 2-2','','',3,'swiss_r5'],
