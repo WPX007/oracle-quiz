@@ -175,17 +175,17 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .record-card.cat-locked{border-color:rgba(255,70,85,.3)}
 
 /* ===== Swiss Round ===== */
-.swiss-bracket{overflow-x:auto;padding:16px 0}
-.swiss-row{display:flex;align-items:flex-start;gap:20px;min-width:1200px;padding-left:30px}
+.swiss-bracket{overflow-x:visible;padding:16px 0}
+.swiss-row{display:flex;align-items:flex-start;gap:36px;padding-left:30px}
 .swiss-round{
-  display:flex;flex-direction:column;align-items:center;min-width:200px;flex-shrink:0;
+  display:flex;flex-direction:column;align-items:center;min-width:240px;flex-shrink:0;
 }
 .swiss-round-title{
   font-size:13px;color:var(--gold);letter-spacing:2px;margin-bottom:12px;
   padding:6px 18px;border:1px solid var(--gold3);border-radius:16px;
   background:rgba(200,170,110,.05);white-space:nowrap;
 }
-.swiss-group{margin-bottom:18px;width:100%}
+.swiss-group{margin-bottom:24px;width:100%}
 .swiss-group-label{
   font-size:16px;font-weight:bold;color:var(--gold);text-align:center;margin-bottom:10px;
   padding:8px 14px;background:linear-gradient(135deg,var(--bg3),var(--bg4));
@@ -209,7 +209,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .section-title .badge.l{background:rgba(255,70,85,.12);color:var(--red)}
 .section-title .badge.f{background:rgba(200,170,110,.15);color:var(--gold)}
 
-.bracket-row{display:flex;align-items:center;gap:12px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:12px}
+.bracket-row{display:flex;align-items:center;gap:24px;flex-wrap:nowrap;overflow-x:visible;padding-bottom:12px}
 .bracket-col{display:flex;flex-direction:column;gap:6px;align-items:center;flex-shrink:0}
 .bracket-col .round-label{
   font-size:11px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;
@@ -219,7 +219,7 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
 .arrow{color:var(--text2);font-size:18px;padding:0 2px;flex-shrink:0}
 
 .match-card{
-  width:200px;background:var(--card);border:1px solid var(--border);
+  width:240px;background:var(--card);border:1px solid var(--border);
   border-radius:6px;overflow:hidden;transition:.2s;flex-shrink:0;
   margin-bottom:8px;position:relative;
 }
@@ -929,10 +929,17 @@ function makeMatchCard(mid) {
       </div>
     </div>`;
   } else if (pred && isFinished) {
-    const wonText = pred.won
-      ? `<span style="color:var(--teal)">+${pred.payout}</span>`
-      : `<span style="color:var(--red)">-${pred.amount}</span>`;
-    html += `<div style="padding:3px 8px;font-size:10px;text-align:center;color:var(--text2);background:rgba(0,0,0,.15)">${wonText}</div>`;
+    const profit = pred.won ? (pred.payout - pred.amount) : -pred.amount;
+    const profitColor = pred.won ? 'var(--teal)' : 'var(--red)';
+    const profitText = pred.won ? `+${profit}` : `${profit}`;
+    const payoutLine = pred.won
+      ? `<span style="color:var(--teal)">收益 ${pred.payout}</span>`
+      : `<span style="color:var(--red)">未中</span>`;
+    html += `<div style="padding:4px 8px;font-size:10px;text-align:center;color:var(--text2);background:rgba(0,0,0,.15);display:flex;justify-content:space-between;gap:6px">
+      <span>押 ${pred.amount}</span>
+      ${payoutLine}
+      <span style="color:${profitColor};font-weight:bold">${profitText}</span>
+    </div>`;
   }
 
   html += '</div>';
