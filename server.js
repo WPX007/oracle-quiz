@@ -105,6 +105,18 @@ db.exec(`
 
 try { db.prepare("ALTER TABLE matches ADD COLUMN start_time TEXT DEFAULT ''").run(); } catch (e) {}
 
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_predictions_user    ON predictions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_predictions_match   ON predictions(match_id);
+  CREATE INDEX IF NOT EXISTS idx_predictions_settled ON predictions(settled);
+  CREATE INDEX IF NOT EXISTS idx_bets_user           ON bets(user_id);
+  CREATE INDEX IF NOT EXISTS idx_bets_market         ON bets(market_id);
+  CREATE INDEX IF NOT EXISTS idx_bets_settled        ON bets(settled);
+  CREATE INDEX IF NOT EXISTS idx_coin_logs_user      ON coin_logs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_coin_logs_created   ON coin_logs(created_at);
+  CREATE INDEX IF NOT EXISTS idx_markets_settled     ON markets(settled);
+`);
+
 // ── Team name aliases (old → new) for canonical comparison ─
 const TEAM_OLD_TO_NEW = {
   '卓慧玲队':'灵宝真好养','钟文迪队':'冷静稳健运营','谭章斌队':'守感来了','何博文队':'通天岱丶何龙王',
@@ -834,20 +846,38 @@ app.post('/api/admin/clear-unsettled', requireAuth, requireAdmin, (req, res) => 
 });
 
 // ── Coin logs ─────────────────────────────────────────────
+function buildDaysClause(days) {
+  const n = parseInt(days);
+  if (!n || n <= 0) return '';
+  return ` AND c.created_at >= datetime('now','localtime',?)`;
+}
+function daysParam(days) {
+  const n = parseInt(days);
+  return n && n > 0 ? [`-${n} days`] : [];
+}
+
 app.get('/api/coin-logs', requireAuth, (req, res) => {
-  const logs = db.prepare('SELECT * FROM coin_logs WHERE user_id = ? ORDER BY id DESC LIMIT 100').all(req.session.userId);
+  const { days } = req.query;
+  const clause = buildDaysClause(days).replace(/\bc\./g, '');
+  const sql = `SELECT * FROM coin_logs WHERE user_id = ?${clause} ORDER BY id DESC LIMIT 500`;
+  const logs = db.prepare(sql).all(req.session.userId, ...daysParam(days));
   res.json({ logs });
 });
 
 app.get('/api/admin/coin-logs', requireAuth, requireAdmin, (req, res) => {
-  const { user_id } = req.query;
-  let logs;
+  const { user_id, days } = req.query;
+  const clause = buildDaysClause(days);
+  const params = [...daysParam(days)];
+  let sql;
   if (user_id) {
-    logs = db.prepare('SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id WHERE c.user_id = ? ORDER BY c.id DESC LIMIT 200').all(parseInt(user_id));
+    sql = `SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id WHERE c.user_id = ?${clause} ORDER BY c.id DESC LIMIT 1000`;
+    const logs = db.prepare(sql).all(parseInt(user_id), ...params);
+    return res.json({ logs });
   } else {
-    logs = db.prepare('SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id ORDER BY c.id DESC LIMIT 500').all();
+    sql = `SELECT c.*, u.display FROM coin_logs c JOIN users u ON u.id=c.user_id WHERE 1=1${clause} ORDER BY c.id DESC LIMIT 2000`;
+    const logs = db.prepare(sql).all(...params);
+    return res.json({ logs });
   }
-  res.json({ logs });
 });
 
 // ── Admin: give coins ─────────────────────────────────────

@@ -579,6 +579,23 @@ function canonicalTeam(name) {
   return nameMapOldToNew[name] || name;
 }
 
+function parseMatchTime(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[:：](\d{1,2})/);
+  if (!m) return null;
+  const now = new Date();
+  return new Date(now.getFullYear(), parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[3]), parseInt(m[4]));
+}
+
+function isMatchToday(startTimeStr) {
+  const dt = parseMatchTime(startTimeStr);
+  if (!dt) return false;
+  const now = new Date();
+  return dt.getFullYear() === now.getFullYear()
+      && dt.getMonth() === now.getMonth()
+      && dt.getDate() === now.getDate();
+}
+
 const BRACKET_DEF = {
   winners: [
     {title:'胜者组第一轮',ids:['W1','W2','W3','W4']},
@@ -723,6 +740,10 @@ function updateStats(predRes, lb) {
 }
 
 // ── Tab switching ─────────────────────────────────────────
+let lastTabFetchAt = 0;
+const TAB_FETCH_THROTTLE_MS = 5000;
+const REFRESH_TABS = new Set(['swiss', 'markets', 'bracket', 'leaderboard']);
+
 document.getElementById('main-nav').addEventListener('click', e => {
   const btn = e.target.closest('button[data-tab]');
   if (!btn) return;
@@ -730,6 +751,15 @@ document.getElementById('main-nav').addEventListener('click', e => {
   btn.classList.add('active');
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.getElementById('sec-' + btn.dataset.tab).classList.add('active');
+
+  const tab = btn.dataset.tab;
+  if (REFRESH_TABS.has(tab)) {
+    const now = Date.now();
+    if (now - lastTabFetchAt > TAB_FETCH_THROTTLE_MS) {
+      lastTabFetchAt = now;
+      loadAllData().catch(() => {});
+    }
+  }
 });
 
 // ── Groups + Record Predictions ───────────────────────────
@@ -852,7 +882,10 @@ function makeMatchCard(mid) {
   }
   const startTime = mData.start_time || '';
   if (startTime) {
-    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3)">⏰ ${startTime}</div>`;
+    const todayBadge = isMatchToday(startTime) && !isFinished && !locked
+      ? '<span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:8px;font-size:10px;letter-spacing:0;margin-left:6px;font-weight:bold">今日</span>'
+      : '';
+    html += `<div style="text-align:center;color:var(--gold);font-size:12px;font-weight:bold;background:linear-gradient(135deg,rgba(200,170,110,.15),rgba(200,170,110,.08));padding:5px;letter-spacing:1px;border-bottom:1px solid var(--gold3)">⏰ ${startTime}${todayBadge}</div>`;
   }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
@@ -928,6 +961,9 @@ function makeMatchCard(mid) {
         <span style="color:var(--gold);cursor:pointer;font-weight:bold" onclick="addonMatchPick('${mid}')">加仓</span>
       </div>
     </div>`;
+  } else if (pred && !isFinished && locked) {
+    const pickName = displayTeamName(pred.pick);
+    html += `<div style="padding:4px 8px;background:rgba(10,207,151,.05);font-size:10px;text-align:center;color:var(--teal)">已押 <strong>${pred.amount}</strong> 币 → ${pickName}（待开奖）</div>`;
   } else if (pred && isFinished) {
     const profit = pred.won ? (pred.payout - pred.amount) : -pred.amount;
     const profitColor = pred.won ? 'var(--teal)' : 'var(--red)';
@@ -1264,6 +1300,58 @@ async function confirmBet(marketId, optionId) {
 // ── Sortable tables ───────────────────────────────────────
 let sortState = {};
 
+function downloadCSV(filename, headers, rows) {
+  const escape = v => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [headers.map(escape).join(',')];
+  for (const r of rows) lines.push(r.map(escape).join(','));
+  const bom = '\uFEFF'; // for Excel UTF-8 detection
+  const blob = new Blob([bom + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportAdminCoinLogs() {
+  if (!adminCoinLogsCache.length) { toast('暂无数据可导出'); return; }
+  const headers = ['时间','用户','变动','余额','原因','详情'];
+  const rows = adminCoinLogsCache.map(l => [l.created_at, l.display||'', l.delta, l.balance, l.reason, l.detail||'']);
+  const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+  downloadCSV(`coin_logs_${ts}.csv`, headers, rows);
+}
+
+function exportAdminUsers() {
+  if (!adminData?.userSummary?.length) { toast('暂无数据可导出'); return; }
+  const headers = ['英文名','姓名','队伍','竞彩币','未结算','总资产','赛事预测','命中','已结算','命中率'];
+  const rows = adminData.userSummary.map(u => {
+    const pending = u.pending_amount || 0;
+    const total = u.points + pending;
+    const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
+    return [u.username, u.display, u.team || '', u.points, pending, total, u.match_preds, u.hits, u.settled, rate];
+  });
+  const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+  downloadCSV(`users_${ts}.csv`, headers, rows);
+}
+
+function exportAdminMatchPreds() {
+  const preds = adminData?.matchPreds || [];
+  if (!preds.length) { toast('暂无数据可导出'); return; }
+  const headers = ['场次','姓名','队伍','押注队伍','押注金额','派彩','结算','命中','下注时间'];
+  const rows = preds.map(p => [
+    p.match_id, p.display, p.team || '',
+    p.pick, p.amount, p.payout || 0,
+    p.settled ? '是' : '否', p.won ? '中' : (p.settled ? '未中' : '-'),
+    p.created_at
+  ]);
+  const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+  downloadCSV(`match_predictions_${ts}.csv`, headers, rows);
+}
+
 function makeSortable(tableId) {
   setTimeout(() => {
     const table = document.getElementById(tableId);
@@ -1396,13 +1484,21 @@ async function renderAdmin() {
     </div>
 
     <div class="admin-sub" id="adm-users">
-      <div class="admin-panel"><h3>全员数据</h3>
+      <div class="admin-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">全员数据</h3>
+          <button class="admin-btn" onclick="exportAdminUsers()">导出 CSV</button>
+        </div>
         <div class="scroll-box" id="ov-user-table"></div>
       </div>
     </div>
 
     <div class="admin-sub" id="adm-match-preds">
-      <div class="admin-panel"><h3>淘汰赛预测明细</h3>
+      <div class="admin-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">淘汰赛预测明细</h3>
+          <button class="admin-btn" onclick="exportAdminMatchPreds()">导出 CSV</button>
+        </div>
         <div class="admin-row" style="margin-bottom:10px">
           <select id="adm-filter-match" onchange="filterMatchPreds()"><option value="">全部场次</option>${matchOpts}</select>
         </div>
@@ -1479,8 +1575,16 @@ async function renderAdmin() {
     <div class="admin-sub" id="adm-coinlogs">
       <div class="admin-panel">
         <h3>竞彩币流水</h3>
-        <div class="admin-row">
+        <div class="admin-row" style="gap:8px;flex-wrap:wrap">
           <select id="adm-log-user" onchange="loadAdminCoinLogs()"><option value="">全部用户</option></select>
+          <select id="adm-log-days" onchange="loadAdminCoinLogs()">
+            <option value="1">最近 1 天</option>
+            <option value="3">最近 3 天</option>
+            <option value="7" selected>最近 7 天</option>
+            <option value="30">最近 30 天</option>
+            <option value="0">全部</option>
+          </select>
+          <button class="admin-btn" onclick="exportAdminCoinLogs()">导出 CSV</button>
         </div>
         <div class="scroll-box" style="max-height:600px" id="adm-coinlog-list"></div>
       </div>
@@ -1993,12 +2097,20 @@ async function adminClearUnsettled() {
   } catch (e) { document.getElementById('adm-msg5').textContent = '❌ ' + e.message; }
 }
 
-async function showMyLogs() {
+async function showMyLogs(days = 7) {
   try {
-    const data = await api('/api/coin-logs');
+    const data = await api('/api/coin-logs?days=' + days);
+    document.getElementById('coin-log-modal')?.remove();
     let html = '<div id="coin-log-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">';
-    html += '<div style="width:500px;max-height:80vh;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;overflow-y:auto">';
-    html += '<h3 style="color:var(--gold);margin-bottom:12px">竞彩币流水</h3>';
+    html += '<div style="width:520px;max-height:80vh;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;overflow-y:auto">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="color:var(--gold);margin:0">竞彩币流水</h3>';
+    html += `<select id="my-log-days" onchange="showMyLogs(this.value)" style="padding:4px 8px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:4px">
+      <option value="1"${days==1?' selected':''}>最近 1 天</option>
+      <option value="3"${days==3?' selected':''}>最近 3 天</option>
+      <option value="7"${days==7?' selected':''}>最近 7 天</option>
+      <option value="30"${days==30?' selected':''}>最近 30 天</option>
+      <option value="0"${days==0?' selected':''}>全部</option>
+    </select></div>`;
     if (!data.logs.length) {
       html += '<div style="color:var(--text2);text-align:center;padding:20px">暂无记录</div>';
     } else {
@@ -2017,10 +2129,16 @@ async function showMyLogs() {
   } catch (e) { toast(e.message); }
 }
 
+let adminCoinLogsCache = [];
 async function loadAdminCoinLogs() {
   const userId = document.getElementById('adm-log-user')?.value || '';
+  const days = document.getElementById('adm-log-days')?.value ?? '7';
   try {
-    const data = await api('/api/admin/coin-logs' + (userId ? '?user_id=' + userId : ''));
+    const qs = [];
+    if (userId) qs.push('user_id=' + userId);
+    if (days !== undefined) qs.push('days=' + days);
+    const data = await api('/api/admin/coin-logs' + (qs.length ? '?' + qs.join('&') : ''));
+    adminCoinLogsCache = data.logs;
     const el = document.getElementById('adm-coinlog-list');
     if (!data.logs.length) { el.innerHTML = '<div class="no-data">暂无记录</div>'; return; }
     let h = '<table class="detail-table" id="tbl-admin-logs"><thead><tr><th>时间</th><th>用户</th><th>变动</th><th>余额</th><th>原因</th><th>详情</th></tr></thead><tbody>';
