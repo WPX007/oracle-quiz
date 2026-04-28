@@ -574,6 +574,11 @@ function displayTeamName(dbName) {
   }
 }
 
+function canonicalTeam(name) {
+  if (!name) return '';
+  return nameMapOldToNew[name] || name;
+}
+
 const BRACKET_DEF = {
   winners: [
     {title:'胜者组第一轮',ids:['W1','W2','W3','W4']},
@@ -851,6 +856,11 @@ function makeMatchCard(mid) {
   }
   html += `<div class="match-hdr"><span>${mid} · BO${bo}</span>${scoreBadge}${poolBadge}${lockBadge}</div>`;
 
+  const myTeamCanon = canonicalTeam(currentUser?.team);
+  const t1Canon = canonicalTeam(t1.name);
+  const t2Canon = canonicalTeam(t2.name);
+  const myTeamInMatch = myTeamCanon && (myTeamCanon === t1Canon || myTeamCanon === t2Canon);
+
   [t1, t2].forEach((t, idx) => {
     const isPicked = pick === t.name && t.resolved;
     const isWinner = result && t.name === result;
@@ -867,8 +877,12 @@ function makeMatchCard(mid) {
     const hasPending = !!pendingSel;
     const isPending = pendingSel === t.name;
     const showAsPicked = hasPending ? isPending : isPicked;
-    const canClick = t.resolved && !locked && !result && !currentUser?.is_admin && !pred;
-    const clickAttr = canClick ? `onclick="event.stopPropagation();selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"` : '';
+    const isMyTeam = canonicalTeam(t.name) === myTeamCanon && myTeamCanon !== '';
+    const blockedByOwnTeamRule = myTeamInMatch && !isMyTeam;
+    const canClick = t.resolved && !locked && !result && !currentUser?.is_admin && !pred && !blockedByOwnTeamRule;
+    const clickAttr = canClick
+      ? `onclick="event.stopPropagation();selectMatchTeam('${mid}','${t.name.replace(/'/g, "\\'")}')"`
+      : (blockedByOwnTeamRule && !pred && !isFinished ? `onclick="event.stopPropagation();toast('本场你的队伍参赛，只能押自己队伍获胜')" style="cursor:not-allowed;opacity:.55"` : '');
     const nameCls = t.resolved ? '' : 'tbd';
     const myScore = isFinished ? (isWinner ? scores[0] : scores[1]) : '';
     const teamScore = myScore ? `<span class="score-val">${myScore}</span>` : '';
@@ -883,11 +897,13 @@ function makeMatchCard(mid) {
       cls = t.resolved ? '' : 'disabled';
       if (showAsPicked) cls += ' picked';
       if (locked || result) cls += ' disabled';
+      if (blockedByOwnTeamRule && !pred) cls += ' disabled';
     }
 
     const dName = displayTeamName(t.name);
+    const myMark = isMyTeam ? '<span style="color:var(--gold);font-size:9px;margin-left:2px">本队</span>' : '';
     html += `<div class="match-slot ${cls}" ${clickAttr}>
-      <div class="team-name ${nameCls}">${dName}${winMark}</div>
+      <div class="team-name ${nameCls}">${dName}${winMark}${myMark}</div>
       ${isFinished ? `${teamScore}<span style="font-size:9px;color:var(--text2);margin-left:2px">${betInfo}</span>${oddsTag}` : `${betInfo}${oddsTag}`}
     </div>`;
   });

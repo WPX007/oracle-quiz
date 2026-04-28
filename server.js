@@ -105,6 +105,18 @@ db.exec(`
 
 try { db.prepare("ALTER TABLE matches ADD COLUMN start_time TEXT DEFAULT ''").run(); } catch (e) {}
 
+// ── Team name aliases (old → new) for canonical comparison ─
+const TEAM_OLD_TO_NEW = {
+  '卓慧玲队':'灵宝真好养','钟文迪队':'冷静稳健运营','谭章斌队':'守感来了','何博文队':'通天岱丶何龙王',
+  '李仁杰队':'幕后黑手','张书嘉队':'好想打五排','何怡君队':'明牌四保一','张益帆队':'紧急需求',
+  '左天白队':'签运爆表','郑宇队':'你看的懂吗','林辉河队':'教练带的兵','秦祥龙队':'卷起来好吗',
+  '马浩队':'带头冲锋','高世豪队':'男模团','温鹏祥队':'温&宝','李思鹏队':'数值溢出',
+};
+function canonicalTeam(name) {
+  if (!name) return '';
+  return TEAM_OLD_TO_NEW[name] || name;
+}
+
 // ── Seed data ─────────────────────────────────────────────
 const PLAYERS = [
   ['lucazheng','郑宇','你看的懂吗'],['aaronzzhao','赵宇涵','带头冲锋'],['alenjiang','蒋佳志','明牌四保一'],
@@ -351,8 +363,15 @@ app.post('/api/predict', requireAuth, (req, res) => {
   const betAmount = Math.floor(Number(amount));
   if (!betAmount || betAmount < 20) return res.status(400).json({ error: '下注金额最低 20 币' });
 
-  const user = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId);
+  const user = db.prepare('SELECT points, team FROM users WHERE id = ?').get(req.session.userId);
   if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
+  const myCanon = canonicalTeam(user.team);
+  const t1Canon = canonicalTeam(match.team1);
+  const t2Canon = canonicalTeam(match.team2);
+  const pickCanon = canonicalTeam(pick);
+  if (myCanon && (myCanon === t1Canon || myCanon === t2Canon) && pickCanon !== myCanon) {
+    return res.status(400).json({ error: `本场你的队伍参赛，只能押自己队伍获胜` });
+  }
 
   const tx = db.transaction(() => {
     logCoins(req.session.userId, -betAmount, '比赛下注', `${match_id} → ${pick}`);
