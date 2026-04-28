@@ -325,6 +325,8 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
   border-bottom:2px solid var(--gold3);position:sticky;top:0;
 }
 .detail-table td{padding:7px 10px;border-bottom:1px solid var(--border)}
+#tbl-admin-logs td,#tbl-admin-logs th{white-space:nowrap}
+#adm-coinlog-list{overflow-x:auto}
 .detail-table tr:hover td{background:var(--card-hover)}
 .detail-table .won-yes{color:var(--teal)}
 .detail-table .won-no{color:var(--red);opacity:.6}
@@ -2102,7 +2104,8 @@ async function showMyLogs(days = 7) {
     const data = await api('/api/coin-logs?days=' + days);
     document.getElementById('coin-log-modal')?.remove();
     let html = '<div id="coin-log-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">';
-    html += '<div style="width:520px;max-height:80vh;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;overflow-y:auto">';
+    html += '<div style="width:min(760px,92vw);max-height:80vh;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;overflow:auto">';
+    html += '<style>#coin-log-modal #tbl-my-logs td,#coin-log-modal #tbl-my-logs th{white-space:nowrap}</style>';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="color:var(--gold);margin:0">竞彩币流水</h3>';
     html += `<select id="my-log-days" onchange="showMyLogs(this.value)" style="padding:4px 8px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:4px">
       <option value="1"${days==1?' selected':''}>最近 1 天</option>
