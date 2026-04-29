@@ -970,6 +970,45 @@ app.post('/api/change-password-public', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Auto-lock matches 5 min before start_time ─────────────
+function parseMatchStartTime(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/(\d{1,2})\/(\d{1,2})\s+(\d{1,2})[:：](\d{1,2})/);
+  if (!m) return null;
+  const now = new Date();
+  return new Date(now.getFullYear(), parseInt(m[1]) - 1, parseInt(m[2]), parseInt(m[3]), parseInt(m[4]));
+}
+
+function autoLockUpcomingMatches() {
+  try {
+    const rows = db.prepare(`
+      SELECT id, start_time FROM matches
+      WHERE locked = 0
+        AND (result IS NULL OR result = '')
+        AND start_time IS NOT NULL AND start_time != ''
+    `).all();
+    const now = Date.now();
+    const FIVE_MIN = 5 * 60 * 1000;
+    let count = 0;
+    const stmt = db.prepare('UPDATE matches SET locked = 1 WHERE id = ?');
+    for (const r of rows) {
+      const dt = parseMatchStartTime(r.start_time);
+      if (!dt) continue;
+      if (dt.getTime() - now <= FIVE_MIN) {
+        stmt.run(r.id);
+        count++;
+        console.log(`[auto-lock] ${r.id} (${r.start_time}) → locked`);
+      }
+    }
+    if (count > 0) console.log(`[auto-lock] ${count} 场比赛已自动封盘`);
+  } catch (e) {
+    console.error('[auto-lock] error:', e.message);
+  }
+}
+
+setInterval(autoLockUpcomingMatches, 30 * 1000);
+autoLockUpcomingMatches();
+
 // ── Start ─────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  🏆 王者荣耀策划联赛竞猜 - 已启动`);
