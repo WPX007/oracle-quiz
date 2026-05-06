@@ -314,24 +314,123 @@ app.get('/api/me', requireAuth, (req, res) => {
   res.json({ user: { ...user, is_admin: !!user.is_admin } });
 });
 
+// ── Settings helpers ──────────────────────────────────────
+function getSetting(key, def) {
+  const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return r ? r.value : def;
+}
+function setSetting(key, value) {
+  db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run(key, String(value));
+}
+const DEFAULT_CHECKIN_REWARD = 100;
+function getConfiguredCheckinReward() {
+  const v = parseInt(getSetting('checkin_reward', String(DEFAULT_CHECKIN_REWARD)));
+  return isNaN(v) || v < 0 ? DEFAULT_CHECKIN_REWARD : v;
+}
+function getCheckinStart() { return getSetting('checkin_start', '') || ''; }
+function getCheckinEnd()   { return getSetting('checkin_end',   '') || ''; }
+
+function parseLocalDatetime(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T\s](\d{1,2}):(\d{1,2})/);
+  if (!m) return null;
+  return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+}
+
+function checkinWindowState() {
+  const s = getCheckinStart();
+  const e = getCheckinEnd();
+  const startDt = parseLocalDatetime(s);
+  const endDt = parseLocalDatetime(e);
+  const now = new Date();
+  let phase = 'in-window'; // in-window | not-started | ended | always-on
+  if (!startDt && !endDt) phase = 'always-on';
+  else if (startDt && now < startDt) phase = 'not-started';
+  else if (endDt && now >= endDt) phase = 'ended';
+  return { phase, start: s, end: e };
+}
+
+function getEffectiveCheckinReward() {
+  const win = checkinWindowState();
+  // Bonus only inside the configured window. Outside (or no window set) → default 100.
+  // 'always-on' (no window) treats configured reward as the effective reward.
+  if (win.phase === 'in-window' || win.phase === 'always-on') return getConfiguredCheckinReward();
+  return DEFAULT_CHECKIN_REWARD;
+}
+
 // ── Checkin API ───────────────────────────────────────────
 app.get('/api/checkin', requireAuth, (req, res) => {
   const today = new Date().toISOString().slice(0, 10);
   const done = db.prepare('SELECT id FROM checkins WHERE user_id = ? AND day = ?').get(req.session.userId, today);
   const total = db.prepare('SELECT COUNT(*) as c FROM checkins WHERE user_id = ?').get(req.session.userId).c;
-  res.json({ checkedIn: !!done, today, totalDays: total });
+  const win = checkinWindowState();
+  res.json({
+    checkedIn: !!done, today, totalDays: total,
+    reward: getEffectiveCheckinReward(),
+    configured_reward: getConfiguredCheckinReward(),
+    default_reward: DEFAULT_CHECKIN_REWARD,
+    checkin_start: win.start, checkin_end: win.end, phase: win.phase,
+  });
 });
 
 app.post('/api/checkin', requireAuth, (req, res) => {
   if (req.session.isAdmin) return res.status(403).json({ error: '管理员不可签到' });
+
   const today = new Date().toISOString().slice(0, 10);
   const existing = db.prepare('SELECT id FROM checkins WHERE user_id = ? AND day = ?').get(req.session.userId, today);
   if (existing) return res.status(400).json({ error: '今天已经签过到了' });
 
+  const reward = getEffectiveCheckinReward();
   db.prepare('INSERT INTO checkins (user_id, day) VALUES (?, ?)').run(req.session.userId, today);
-  logCoins(req.session.userId, 100, '签到');
+  logCoins(req.session.userId, reward, '签到');
   const total = db.prepare('SELECT COUNT(*) as c FROM checkins WHERE user_id = ?').get(req.session.userId).c;
-  res.json({ ok: true, totalDays: total });
+  res.json({ ok: true, totalDays: total, reward });
+});
+
+// ── Admin: settings ───────────────────────────────────────
+app.get('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
+  res.json({
+    checkin_reward:    getConfiguredCheckinReward(),
+    checkin_start:     getCheckinStart(),
+    checkin_end:       getCheckinEnd(),
+    effective_reward:  getEffectiveCheckinReward(),
+    default_reward:    DEFAULT_CHECKIN_REWARD,
+    phase:             checkinWindowState().phase,
+  });
+});
+
+app.post('/api/admin/settings', requireAuth, requireAdmin, (req, res) => {
+  const { checkin_reward, checkin_start, checkin_end } = req.body;
+  if (checkin_reward !== undefined) {
+    const n = parseInt(checkin_reward);
+    if (isNaN(n) || n < 0) return res.status(400).json({ error: '签到奖励数值无效' });
+    setSetting('checkin_reward', n);
+  }
+  if (checkin_start !== undefined) {
+    const s = String(checkin_start || '').trim();
+    if (s && !parseLocalDatetime(s)) return res.status(400).json({ error: '开始时间格式错误' });
+    setSetting('checkin_start', s);
+  }
+  if (checkin_end !== undefined) {
+    const s = String(checkin_end || '').trim();
+    if (s && !parseLocalDatetime(s)) return res.status(400).json({ error: '结束时间格式错误' });
+    setSetting('checkin_end', s);
+  }
+  // sanity check: if both set and start >= end → reject
+  const startDt = parseLocalDatetime(getCheckinStart());
+  const endDt = parseLocalDatetime(getCheckinEnd());
+  if (startDt && endDt && startDt >= endDt) {
+    return res.status(400).json({ error: '开始时间需早于结束时间' });
+  }
+  res.json({
+    ok: true,
+    checkin_reward:   getConfiguredCheckinReward(),
+    checkin_start:    getCheckinStart(),
+    checkin_end:      getCheckinEnd(),
+    effective_reward: getEffectiveCheckinReward(),
+    phase:            checkinWindowState().phase,
+  });
 });
 
 // ── Predictions API ───────────────────────────────────────
