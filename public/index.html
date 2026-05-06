@@ -1385,9 +1385,19 @@ function sortTable(tableId, colIdx) {
   arrow.textContent = asc === 'asc' ? ' ▲' : ' ▼';
   ths[colIdx].appendChild(arrow);
 
+  const isEmpty = v => {
+    const t = (v || '').trim();
+    return t === '' || t === '-' || t === '—' || t === 'TBD';
+  };
+
   rows.sort((a, b) => {
     let va = a.cells[colIdx]?.textContent.trim() || '';
     let vb = b.cells[colIdx]?.textContent.trim() || '';
+    const ea = isEmpty(va);
+    const eb = isEmpty(vb);
+    if (ea && eb) return 0;
+    if (ea) return 1;
+    if (eb) return -1;
     const na = parseFloat(va.replace(/[^0-9.\-]/g, ''));
     const nb = parseFloat(vb.replace(/[^0-9.\-]/g, ''));
     if (!isNaN(na) && !isNaN(nb)) {
