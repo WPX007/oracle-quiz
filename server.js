@@ -385,7 +385,8 @@ app.post('/api/checkin', requireAuth, (req, res) => {
   db.prepare('INSERT INTO checkins (user_id, day) VALUES (?, ?)').run(req.session.userId, today);
   logCoins(req.session.userId, reward, '签到');
   const total = db.prepare('SELECT COUNT(*) as c FROM checkins WHERE user_id = ?').get(req.session.userId).c;
-  res.json({ ok: true, totalDays: total, reward });
+  const points = db.prepare('SELECT points FROM users WHERE id = ?').get(req.session.userId).points;
+  res.json({ ok: true, totalDays: total, reward, points });
 });
 
 // ── Admin: settings ───────────────────────────────────────

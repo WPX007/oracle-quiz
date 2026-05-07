@@ -735,6 +735,8 @@ function updateStats(predRes, lb) {
   const hits = settled.filter(p => p.won);
   const me = lb?.find(u => u.id === currentUser.id);
 
+  if (me && currentUser) currentUser.points = me.points;
+
   document.getElementById('s-preds').textContent = total;
   document.getElementById('s-hits').textContent = hits.length;
   document.getElementById('s-rate').textContent = settled.length ? Math.round(hits.length / settled.length * 100) + '%' : '0%';
@@ -796,9 +798,11 @@ async function doCheckin() {
     const data = await api('/api/checkin', { method: 'POST' });
     checkinState.checkedIn = true;
     checkinState.totalDays = data.totalDays;
+    if (data.points != null && currentUser) currentUser.points = data.points;
     updateCheckinBtn();
+    document.getElementById('s-pts').textContent = data.points ?? currentUser.points;
     toast(`签到成功 +${data.reward} 竞彩币`);
-    loadAllData();
+    await loadAllData();
   } catch (e) { toast(e.message); }
 }
 
@@ -1048,9 +1052,13 @@ function cancelMatchPick(mid) {
   renderBracket();
 }
 
-function fillAllIn(inputId) {
+async function fillAllIn(inputId) {
   const input = document.getElementById(inputId);
   if (!input) return;
+  try {
+    const data = await api('/api/me');
+    if (data?.user) currentUser = data.user;
+  } catch (e) { /* fall back to cached */ }
   const pts = currentUser?.points || 0;
   if (pts <= 0) { toast('当前没有可用竞彩币'); return; }
   input.value = pts;
