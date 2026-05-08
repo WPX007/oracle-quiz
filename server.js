@@ -1092,13 +1092,12 @@ function autoLockUpcomingMatches() {
         AND start_time IS NOT NULL AND start_time != ''
     `).all();
     const now = Date.now();
-    const FIVE_MIN = 5 * 60 * 1000;
     let count = 0;
     const stmt = db.prepare('UPDATE matches SET locked = 1 WHERE id = ?');
     for (const r of rows) {
       const dt = parseMatchStartTime(r.start_time);
       if (!dt) continue;
-      if (dt.getTime() - now <= FIVE_MIN) {
+      if (dt.getTime() <= now) {
         stmt.run(r.id);
         count++;
         console.log(`[auto-lock] ${r.id} (${r.start_time}) → locked`);
