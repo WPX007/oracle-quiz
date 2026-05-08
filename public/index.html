@@ -1857,16 +1857,18 @@ function showAdminMatchPredsDetail(mid) {
   const groupBy = team => all.filter(p => canonicalTeam(p.pick) === canonicalTeam(team))
     .sort((a, b) => (b.amount || 0) - (a.amount || 0));
   const others = all.filter(p => !t1 || !t2 || (canonicalTeam(p.pick) !== canonicalTeam(t1) && canonicalTeam(p.pick) !== canonicalTeam(t2)));
+  const totalPool = all.reduce((s, p) => s + (p.amount || 0), 0);
 
   function renderColumn(team, displayName, isWinner) {
     const list = team ? groupBy(team) : [];
     const totalAmt = list.reduce((s, p) => s + (p.amount || 0), 0);
     const totalPayout = list.reduce((s, p) => s + (p.payout || 0), 0);
+    const odds = totalAmt > 0 ? (totalPool / totalAmt).toFixed(2) : '-';
     const headerColor = isWinner ? 'var(--teal)' : (m.result ? 'var(--red)' : 'var(--gold)');
     const headerLabel = m.result ? (isWinner ? '胜' : '负') : '';
     let html = `<div style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
       <div style="padding:10px 12px;background:rgba(0,0,0,.2);border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:6px"><strong style="color:${headerColor};font-size:14px">${displayName || 'TBD'}</strong>${headerLabel ? `<span style="font-size:10px;color:#fff;background:${headerColor};padding:1px 6px;border-radius:3px">${headerLabel}</span>` : ''}</div>
+        <div style="display:flex;align-items:center;gap:6px"><strong style="color:${headerColor};font-size:14px">${displayName || 'TBD'}</strong>${headerLabel ? `<span style="font-size:10px;color:#fff;background:${headerColor};padding:1px 6px;border-radius:3px">${headerLabel}</span>` : ''}<span style="font-size:11px;color:#ed7d31;margin-left:auto;font-weight:bold">×${odds}</span></div>
         <div style="font-size:11px;color:var(--text2);margin-top:3px">共 ${list.length} 人 · 押注 ${totalAmt} 币${m.result && isWinner ? ` · 派彩 ${totalPayout}` : ''}</div>
       </div>`;
     if (!list.length) {
