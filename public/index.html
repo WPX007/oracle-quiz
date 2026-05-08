@@ -1818,49 +1818,105 @@ function renderMatchPredsTable(filter) {
     byMatch[p.match_id].push(p);
   });
 
-  let h = '';
+  let h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px">';
   for (const [mid, mPreds] of Object.entries(byMatch)) {
     const m = matchesData[mid] || {};
     const won = mPreds.filter(p => p.settled && p.won);
     const lost = mPreds.filter(p => p.settled && !p.won);
     const pending = mPreds.filter(p => !p.settled);
     const pool = mPreds.reduce((s, p) => s + (p.amount || 0), 0);
-    const matchInfo = m.team1 && m.team2 ? `${m.team1} vs ${m.team2}` : '';
-    const resultInfo = m.result ? ` → ${m.result} ${m.score || ''}` : '';
+    const t1 = displayTeamName(m.team1) || 'TBD';
+    const t2 = displayTeamName(m.team2) || 'TBD';
+    const matchInfo = m.team1 && m.team2 ? `${t1} vs ${t2}` : '';
+    const resultInfo = m.result ? ` → ${displayTeamName(m.result)} ${m.score || ''}` : '';
 
-    h += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;padding:10px 12px">`;
-    h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer" onclick="this.parentElement.querySelector('.pred-detail').classList.toggle('pred-hidden')">`;
-    h += `<strong style="color:var(--gold)">${mid}</strong>`;
-    h += `<span style="font-size:11px;color:var(--text2)">${matchInfo}${resultInfo}</span>`;
-    h += `<span style="font-size:11px;color:var(--gold);margin-left:auto">奖池${pool}币</span>`;
-    h += `<span style="font-size:11px;color:var(--text2)">${mPreds.length}人</span>`;
-    if (won.length) h += `<span style="font-size:11px;color:var(--teal)">命中${won.length}</span>`;
-    if (lost.length) h += `<span style="font-size:11px;color:var(--red)">未中${lost.length}</span>`;
-    if (pending.length) h += `<span style="font-size:11px;color:var(--text2)">待结算${pending.length}</span>`;
-    h += `<span style="font-size:10px;color:var(--text2)">点击展开</span>`;
-    h += `</div>`;
-
-    h += `<div class="pred-detail pred-hidden">`;
-    if (won.length) {
-      h += `<div style="margin-bottom:6px"><span style="font-size:11px;color:var(--teal);font-weight:bold">命中（${won.length}人）：</span>`;
-      won.forEach(p => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:rgba(10,207,151,.1);color:var(--teal);border:1px solid rgba(10,207,151,.3)">${p.display} 押${p.pick} ${p.amount}币→+${p.payout}</span>`; });
-      h += `</div>`;
-    }
-    if (lost.length) {
-      h += `<div style="margin-bottom:6px"><span style="font-size:11px;color:var(--red);font-weight:bold">未中（${lost.length}人）：</span>`;
-      lost.forEach(p => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:rgba(255,70,85,.06);color:var(--red);border:1px solid rgba(255,70,85,.2)">${p.display} 押${p.pick} -${p.amount}币</span>`; });
-      h += `</div>`;
-    }
-    if (pending.length) {
-      h += `<div><span style="font-size:11px;color:var(--text2);font-weight:bold">待结算（${pending.length}人）：</span>`;
-      pending.forEach(p => { h += `<span style="display:inline-block;margin:2px;padding:2px 8px;border-radius:4px;font-size:11px;background:var(--bg3);color:var(--text2);border:1px solid var(--border)">${p.display} 押${p.pick} ${p.amount}币</span>`; });
-      h += `</div>`;
-    }
+    h += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor='var(--gold3)'" onmouseout="this.style.borderColor='var(--border)'" onclick="showAdminMatchPredsDetail('${mid}')">`;
+    h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><strong style="color:var(--gold)">${mid}</strong><span style="font-size:10px;color:var(--gold);margin-left:auto">奖池 ${pool}</span></div>`;
+    h += `<div style="font-size:11px;color:var(--text2);margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${matchInfo}${resultInfo}</div>`;
+    h += `<div style="font-size:11px;display:flex;gap:10px;flex-wrap:wrap"><span style="color:var(--text2)">${mPreds.length}人</span>`;
+    if (won.length) h += `<span style="color:var(--teal)">命中 ${won.length}</span>`;
+    if (lost.length) h += `<span style="color:var(--red)">未中 ${lost.length}</span>`;
+    if (pending.length) h += `<span style="color:var(--text2)">待结 ${pending.length}</span>`;
     h += `</div></div>`;
   }
+  h += '</div>';
 
   document.getElementById('ov-match-preds').innerHTML = h;
 }
+
+function showAdminMatchPredsDetail(mid) {
+  const all = (adminData?.matchPreds || []).filter(p => p.match_id === mid);
+  if (!all.length) { toast('该场次无下注数据'); return; }
+  const m = matchesData[mid] || {};
+  const t1 = m.team1 || '';
+  const t2 = m.team2 || '';
+  const t1Display = displayTeamName(t1) || 'TBD';
+  const t2Display = displayTeamName(t2) || 'TBD';
+  const winnerCanon = canonicalTeam(m.result);
+
+  const groupBy = team => all.filter(p => canonicalTeam(p.pick) === canonicalTeam(team))
+    .sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  const others = all.filter(p => !t1 || !t2 || (canonicalTeam(p.pick) !== canonicalTeam(t1) && canonicalTeam(p.pick) !== canonicalTeam(t2)));
+
+  function renderColumn(team, displayName, isWinner) {
+    const list = team ? groupBy(team) : [];
+    const totalAmt = list.reduce((s, p) => s + (p.amount || 0), 0);
+    const totalPayout = list.reduce((s, p) => s + (p.payout || 0), 0);
+    const headerColor = isWinner ? 'var(--teal)' : (m.result ? 'var(--red)' : 'var(--gold)');
+    const headerLabel = m.result ? (isWinner ? '胜' : '负') : '';
+    let html = `<div style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+      <div style="padding:10px 12px;background:rgba(0,0,0,.2);border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:6px"><strong style="color:${headerColor};font-size:14px">${displayName || 'TBD'}</strong>${headerLabel ? `<span style="font-size:10px;color:#fff;background:${headerColor};padding:1px 6px;border-radius:3px">${headerLabel}</span>` : ''}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:3px">共 ${list.length} 人 · 押注 ${totalAmt} 币${m.result && isWinner ? ` · 派彩 ${totalPayout}` : ''}</div>
+      </div>`;
+    if (!list.length) {
+      html += `<div style="padding:14px;color:var(--text2);font-size:12px;text-align:center">无人押注</div>`;
+    } else {
+      html += '<div style="max-height:400px;overflow-y:auto">';
+      list.forEach(p => {
+        const won = p.settled && p.won;
+        const lost = p.settled && !p.won;
+        const color = won ? 'var(--teal)' : (lost ? 'var(--red)' : 'var(--text)');
+        const profitText = won
+          ? `<span style="color:var(--teal);font-weight:bold;font-size:11px">+${(p.payout || 0) - (p.amount || 0)}</span>`
+          : (lost ? `<span style="color:var(--red);font-weight:bold;font-size:11px">-${p.amount}</span>` : `<span style="color:var(--text2);font-size:11px">待结</span>`);
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--border);font-size:12px">
+          <span style="color:${color}">${p.display}</span>
+          <span style="display:flex;gap:8px;align-items:center"><span style="color:var(--text2)">押 ${p.amount}</span>${profitText}</span>
+        </div>`;
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  let modal = `<div id="adm-pred-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:300;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">`;
+  modal += `<div style="width:min(880px,94vw);max-height:88vh;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;overflow:auto">`;
+  modal += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+    <div><strong style="color:var(--gold);font-size:16px">${mid}</strong>
+    ${m.result ? `<span style="font-size:11px;color:var(--text2);margin-left:8px">结果：${displayTeamName(m.result)} ${m.score || ''}</span>` : ''}
+    </div>
+    <button style="padding:4px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:4px;cursor:pointer" onclick="document.getElementById('adm-pred-modal').remove()">关闭</button>
+  </div>`;
+  modal += `<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap">`;
+  modal += renderColumn(t1, t1Display, t1 && winnerCanon === canonicalTeam(t1));
+  modal += renderColumn(t2, t2Display, t2 && winnerCanon === canonicalTeam(t2));
+  modal += `</div>`;
+  if (others.length) {
+    modal += `<div style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--border)">
+      <div style="font-size:11px;color:var(--red);margin-bottom:6px">⚠️ 押注了非本场队伍（${others.length}人）：</div>`;
+    others.forEach(p => {
+      modal += `<span style="display:inline-block;margin:2px;padding:2px 8px;font-size:11px;background:rgba(255,70,85,.08);color:var(--red);border-radius:4px;border:1px solid rgba(255,70,85,.2)">${p.display} 押 ${p.pick} ${p.amount}</span>`;
+    });
+    modal += '</div>';
+  }
+  modal += '</div></div>';
+
+  document.getElementById('adm-pred-modal')?.remove();
+  document.body.insertAdjacentHTML('beforeend', modal);
+}
+
 function filterMatchPreds() { renderMatchPredsTable(document.getElementById('adm-filter-match').value); }
 
 function renderLockControls() {
