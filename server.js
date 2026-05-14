@@ -815,6 +815,21 @@ app.get('/api/admin/attendance', requireAuth, requireAdmin, (req, res) => {
 });
 
 // ── Admin: data overview ──────────────────────────────────
+app.get('/api/admin/match-stats', requireAuth, requireAdmin, (req, res) => {
+  const rows = db.prepare(`
+    SELECT m.id, m.label, m.team1, m.team2, m.result, m.score, m.locked, m.start_time,
+      COALESCE((SELECT SUM(amount) FROM predictions p WHERE p.match_id = m.id), 0) as total_amount,
+      COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id), 0) as bet_count,
+      COALESCE((SELECT SUM(payout) FROM predictions p WHERE p.match_id = m.id AND p.settled = 1 AND p.won = 1), 0) as total_payout,
+      COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id AND p.settled = 1 AND p.won = 1), 0) as won_count,
+      COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id AND p.settled = 1 AND p.won = 0), 0) as lost_count,
+      COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id AND p.settled = 0), 0) as pending_count
+    FROM matches m
+    ORDER BY m.id
+  `).all();
+  res.json({ matches: rows });
+});
+
 app.get('/api/admin/overview', requireAuth, requireAdmin, (req, res) => {
   const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users WHERE is_admin = 0').get().c;
   const totalPredictions = db.prepare('SELECT COUNT(*) as c FROM predictions').get().c;
@@ -852,7 +867,12 @@ app.get('/api/admin/all-predictions', requireAuth, requireAdmin, (req, res) => {
       COALESCE((SELECT SUM(payout - amount) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 1), 0) +
       COALESCE((SELECT SUM(payout - amount) FROM bets WHERE user_id = u.id AND settled = 1 AND won = 1), 0) as profit,
       COALESCE((SELECT SUM(amount) FROM predictions WHERE user_id = u.id AND settled = 1 AND won = 0), 0) +
-      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 1 AND won = 0), 0) as loss
+      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 1 AND won = 0), 0) as loss,
+      COALESCE((SELECT SUM(delta) FROM coin_logs
+                WHERE user_id = u.id
+                  AND reason IN ('管理员发放','管理员批量发放')
+                  AND delta > 0
+                  AND detail LIKE '%充值%'), 0) as recharge_amount
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();
@@ -875,7 +895,12 @@ app.get('/api/leaderboard', (req, res) => {
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id) as total_preds,
       (SELECT COUNT(*) FROM predictions WHERE user_id = u.id AND settled = 1) as settled,
       COALESCE((SELECT SUM(amount) FROM predictions WHERE user_id = u.id AND settled = 0), 0) +
-      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 0), 0) as pending_amount
+      COALESCE((SELECT SUM(amount) FROM bets WHERE user_id = u.id AND settled = 0), 0) as pending_amount,
+      COALESCE((SELECT SUM(delta) FROM coin_logs
+                WHERE user_id = u.id
+                  AND reason IN ('管理员发放','管理员批量发放')
+                  AND delta > 0
+                  AND detail LIKE '%充值%'), 0) as recharge_amount
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();

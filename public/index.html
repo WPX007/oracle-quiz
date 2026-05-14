@@ -1346,14 +1346,15 @@ function exportAdminCoinLogs() {
 
 function exportAdminUsers() {
   if (!adminData?.userSummary?.length) { toast('暂无数据可导出'); return; }
-  const headers = ['英文名','姓名','队伍','竞彩币','未结算','总资产','盈利','亏损','净盈亏','赛事预测','命中','已结算','命中率'];
+  const headers = ['英文名','姓名','队伍','竞彩币','未结算','总资产','累充','盈利','亏损','净盈亏','赛事预测','命中','已结算','命中率'];
   const rows = adminData.userSummary.map(u => {
     const pending = u.pending_amount || 0;
     const total = u.points + pending;
     const profit = u.profit || 0;
     const loss = u.loss || 0;
+    const recharge = u.recharge_amount || 0;
     const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
-    return [u.username, u.display, u.team || '', u.points, pending, total, profit, loss, profit - loss, u.match_preds, u.hits, u.settled, rate];
+    return [u.username, u.display, u.team || '', u.points, pending, total, recharge, profit, loss, profit - loss, u.match_preds, u.hits, u.settled, rate];
   });
   const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
   downloadCSV(`users_${ts}.csv`, headers, rows);
@@ -1490,6 +1491,7 @@ async function renderAdmin() {
       <button class="active" onclick="switchAdminTab(this,'adm-overview')">数据总览</button>
       <button onclick="switchAdminTab(this,'adm-users')">用户明细</button>
       <button onclick="switchAdminTab(this,'adm-match-preds')">淘汰赛预测</button>
+      <button onclick="switchAdminTab(this,'adm-match-stats')">单局统计</button>
       <button onclick="switchAdminTab(this,'adm-markets')">盘口管理</button>
       <button onclick="switchAdminTab(this,'adm-users-manage')">用户管理</button>
       <button onclick="switchAdminTab(this,'adm-attendance')">全勤统计</button>
@@ -1534,6 +1536,37 @@ async function renderAdmin() {
           <select id="adm-filter-match" onchange="filterMatchPreds()"><option value="">全部场次</option>${matchOpts}</select>
         </div>
         <div class="scroll-box" id="ov-match-preds"></div>
+      </div>
+    </div>
+
+    <div class="admin-sub" id="adm-match-stats">
+      <div class="admin-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">单局押注 / 收益统计</h3>
+          <div style="display:flex;gap:8px">
+            <select id="adm-stats-filter" onchange="renderMatchStats()">
+              <option value="all">全部</option>
+              <option value="settled">已结算</option>
+              <option value="unsettled">未结算</option>
+            </select>
+            <button class="admin-btn" onclick="exportMatchStats()">导出 CSV</button>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 8px">"收益"为用户群体角度的盈亏（派彩 - 押注）。盈利显示<span style="color:var(--red)">红字</span>，亏损显示<span style="color:var(--teal)">绿字</span>。点击表头按列排序。</p>
+        <div class="scroll-box" id="adm-match-stats-list"></div>
+      </div>
+      <div class="admin-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <h3 style="margin:0">🏆 单笔押注排行（TOP 50）</h3>
+          <select id="adm-top-filter" onchange="renderTopBets()">
+            <option value="all">全部</option>
+            <option value="won">已命中</option>
+            <option value="lost">未命中</option>
+            <option value="pending">待结算</option>
+          </select>
+        </div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 8px">按单笔押注金额从高到低排列，可看到谁在哪场押了多少。</p>
+        <div class="scroll-box" id="adm-top-bets-list"></div>
       </div>
     </div>
 
@@ -1736,6 +1769,8 @@ async function loadAdminData() {
     renderMatchPredsTable();
     renderAdminMarketList();
     loadAttendance();
+    loadMatchStats();
+    renderTopBets();
     const logUserSel = document.getElementById('adm-log-user');
     if (logUserSel && adminData.userSummary) {
       logUserSel.innerHTML = '<option value="">全部用户</option>' + adminData.userSummary.map(u => `<option value="${u.id}">${u.display}</option>`).join('');
@@ -1779,7 +1814,7 @@ function renderOverview() {
 
 function renderUserTable() {
   const users = adminData.userSummary;
-  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>未结算</th><th>总资产</th><th>盈利</th><th>亏损</th><th>净盈亏</th><th>赛事预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
+  let h = '<table class="detail-table" id="tbl-users"><thead><tr><th>#</th><th>姓名</th><th>队伍</th><th>竞彩币</th><th>未结算</th><th>总资产</th><th>累充</th><th>盈利</th><th>亏损</th><th>净盈亏</th><th>赛事预测</th><th>命中</th><th>已结算</th><th>命中率</th></tr></thead><tbody>';
   users.forEach((u, i) => {
     const rate = u.settled > 0 ? Math.round(u.hits / u.settled * 100) + '%' : '-';
     const pending = u.pending_amount || 0;
@@ -1787,11 +1822,13 @@ function renderUserTable() {
     const profit = u.profit || 0;
     const loss = u.loss || 0;
     const net = profit - loss;
+    const recharge = u.recharge_amount || 0;
     h += `<tr>
       <td>${i+1}</td><td>${u.display}</td><td style="color:var(--text2)">${displayTeamName(u.team) || '-'}</td>
       <td style="color:${u.points >= 1000 ? 'var(--teal)' : 'var(--red)'}">${u.points}</td>
       <td style="color:${pending > 0 ? 'var(--gold)' : 'var(--text2)'}">${pending > 0 ? pending : '-'}</td>
       <td style="color:${total >= 1000 ? 'var(--teal)' : 'var(--red)'};font-weight:bold">${total}</td>
+      <td style="color:${recharge > 0 ? 'var(--gold)' : 'var(--text2)'}">${recharge > 0 ? recharge : '-'}</td>
       <td style="color:${profit > 0 ? 'var(--teal)' : 'var(--text2)'}">${profit > 0 ? '+'+profit : '-'}</td>
       <td style="color:${loss > 0 ? 'var(--red)' : 'var(--text2)'}">${loss > 0 ? '-'+loss : '-'}</td>
       <td style="color:${net > 0 ? 'var(--teal)' : (net < 0 ? 'var(--red)' : 'var(--text2)')};font-weight:bold">${net > 0 ? '+'+net : net}</td>
@@ -1920,6 +1957,130 @@ function showAdminMatchPredsDetail(mid) {
 }
 
 function filterMatchPreds() { renderMatchPredsTable(document.getElementById('adm-filter-match').value); }
+
+let matchStatsData = [];
+async function loadMatchStats() {
+  try {
+    const data = await api('/api/admin/match-stats');
+    matchStatsData = data.matches || [];
+    renderMatchStats();
+  } catch (e) { /* ignore */ }
+}
+
+function renderMatchStats() {
+  const list = document.getElementById('adm-match-stats-list');
+  if (!list) return;
+  const filter = document.getElementById('adm-stats-filter')?.value || 'all';
+  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0);
+  if (filter === 'settled') rows = rows.filter(m => !!m.result);
+  else if (filter === 'unsettled') rows = rows.filter(m => !m.result);
+  if (!rows.length) { list.innerHTML = '<div class="no-data">暂无押注数据</div>'; return; }
+
+  let totalAmt = 0, totalPay = 0;
+  rows.forEach(m => { totalAmt += m.total_amount || 0; totalPay += m.total_payout || 0; });
+  const grandNet = totalPay - totalAmt;
+
+  let h = '<table class="detail-table" id="tbl-match-stats"><thead><tr>'
+    + '<th>场次</th><th>对阵</th><th>结果</th><th>押注</th><th>派彩</th><th>用户收益</th><th>赢家</th><th>输家</th><th>待结</th>'
+    + '</tr></thead><tbody>';
+  rows.forEach(m => {
+    const t1 = displayTeamName(m.team1) || 'TBD';
+    const t2 = displayTeamName(m.team2) || 'TBD';
+    const matchInfo = (m.team1 && m.team2) ? `${t1} vs ${t2}` : '-';
+    const resultInfo = m.result ? `${displayTeamName(m.result)} ${m.score || ''}` : (m.locked ? '已封盘' : '进行中');
+    const amt = m.total_amount || 0;
+    const pay = m.total_payout || 0;
+    const net = pay - amt;
+    const settled = !!m.result;
+    const netColor = !settled
+      ? 'var(--text2)'
+      : (net > 0 ? 'var(--red)' : (net < 0 ? 'var(--teal)' : 'var(--text2)'));
+    const netText = settled
+      ? (net > 0 ? `+${net}` : (net < 0 ? `${net}` : '0'))
+      : '-';
+    h += `<tr>
+      <td><strong style="color:var(--gold)">${m.id}</strong></td>
+      <td style="font-size:11px;color:var(--text2)">${matchInfo}</td>
+      <td style="font-size:11px;color:${settled?'var(--teal)':'var(--text2)'}">${resultInfo}</td>
+      <td>${amt}</td>
+      <td>${settled ? pay : '-'}</td>
+      <td style="color:${netColor};font-weight:bold">${netText}</td>
+      <td class="won-yes">${m.won_count}</td>
+      <td style="color:var(--red);opacity:.7">${m.lost_count}</td>
+      <td style="color:var(--text2)">${m.pending_count}</td>
+    </tr>`;
+  });
+  // Totals row
+  const grandColor = grandNet > 0 ? 'var(--red)' : (grandNet < 0 ? 'var(--teal)' : 'var(--text2)');
+  h += `</tbody><tfoot><tr style="border-top:2px solid var(--gold3);font-weight:bold;background:rgba(200,170,110,.06)">
+    <td colspan="3" style="text-align:right">合计（${rows.length} 场）：</td>
+    <td>${totalAmt}</td>
+    <td>${totalPay}</td>
+    <td style="color:${grandColor}">${grandNet > 0 ? '+'+grandNet : grandNet}</td>
+    <td colspan="3"></td>
+  </tr></tfoot></table>`;
+  list.innerHTML = h;
+  makeSortable('tbl-match-stats');
+}
+
+function renderTopBets() {
+  const list = document.getElementById('adm-top-bets-list');
+  if (!list) return;
+  const all = adminData?.matchPreds || [];
+  if (!all.length) { list.innerHTML = '<div class="no-data">暂无下注数据</div>'; return; }
+  const filter = document.getElementById('adm-top-filter')?.value || 'all';
+  let rows = all.slice();
+  if (filter === 'won') rows = rows.filter(p => p.settled && p.won);
+  else if (filter === 'lost') rows = rows.filter(p => p.settled && !p.won);
+  else if (filter === 'pending') rows = rows.filter(p => !p.settled);
+  rows.sort((a, b) => (b.amount || 0) - (a.amount || 0));
+  rows = rows.slice(0, 50);
+  if (!rows.length) { list.innerHTML = '<div class="no-data">暂无符合条件的数据</div>'; return; }
+
+  let h = '<table class="detail-table" id="tbl-top-bets"><thead><tr>'
+    + '<th>#</th><th>玩家</th><th>队伍</th><th>场次</th><th>押注队伍</th><th>押注</th><th>派彩</th><th>净盈亏</th><th>状态</th><th>时间</th>'
+    + '</tr></thead><tbody>';
+  rows.forEach((p, i) => {
+    const won = p.settled && p.won;
+    const lost = p.settled && !p.won;
+    const profit = won ? (p.payout - p.amount) : (lost ? -p.amount : 0);
+    const profColor = won ? 'var(--teal)' : (lost ? 'var(--red)' : 'var(--text2)');
+    const profText = won ? `+${profit}` : (lost ? `${profit}` : '-');
+    const status = won ? '<span style="color:var(--teal)">中</span>'
+                       : lost ? '<span style="color:var(--red)">未中</span>'
+                              : '<span style="color:var(--text2)">待结</span>';
+    h += `<tr>
+      <td>${i+1}</td>
+      <td>${p.display}</td>
+      <td style="color:var(--text2);font-size:11px">${displayTeamName(p.team) || '-'}</td>
+      <td><strong style="color:var(--gold)">${p.match_id}</strong></td>
+      <td style="font-size:11px">${displayTeamName(p.pick) || p.pick}</td>
+      <td style="color:var(--gold);font-weight:bold">${p.amount}</td>
+      <td>${won ? p.payout : '-'}</td>
+      <td style="color:${profColor};font-weight:bold">${profText}</td>
+      <td>${status}</td>
+      <td style="font-size:10px;color:var(--text2)">${p.created_at || ''}</td>
+    </tr>`;
+  });
+  h += '</tbody></table>';
+  list.innerHTML = h;
+  makeSortable('tbl-top-bets');
+}
+
+function exportMatchStats() {
+  if (!matchStatsData.length) { toast('暂无数据可导出'); return; }
+  const filter = document.getElementById('adm-stats-filter')?.value || 'all';
+  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0);
+  if (filter === 'settled') rows = rows.filter(m => !!m.result);
+  else if (filter === 'unsettled') rows = rows.filter(m => !m.result);
+  const headers = ['场次','队伍1','队伍2','结果','比分','押注总额','派彩总额','用户净收益','赢家数','输家数','待结数'];
+  const data = rows.map(m => {
+    const net = (m.total_payout || 0) - (m.total_amount || 0);
+    return [m.id, m.team1 || '', m.team2 || '', m.result || '', m.score || '', m.total_amount || 0, m.total_payout || 0, m.result ? net : '', m.won_count, m.lost_count, m.pending_count];
+  });
+  const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+  downloadCSV(`match_stats_${ts}.csv`, headers, data);
+}
 
 function renderLockControls() {
   const el = document.getElementById('lock-controls');
