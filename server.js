@@ -872,7 +872,8 @@ app.get('/api/admin/all-predictions', requireAuth, requireAdmin, (req, res) => {
                 WHERE user_id = u.id
                   AND reason IN ('管理员发放','管理员批量发放')
                   AND delta > 0
-                  AND detail LIKE '%充值%'), 0) as recharge_amount
+                  AND detail LIKE '%充值%'), 0) as recharge_amount,
+      COALESCE((SELECT COUNT(*) FROM checkins WHERE user_id = u.id), 0) as checkin_days
     FROM users u WHERE u.is_admin = 0
     ORDER BY u.points DESC
   `).all();
