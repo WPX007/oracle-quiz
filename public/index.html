@@ -634,10 +634,18 @@ let myBets = {};         // market_id -> { option_id, amount, payout, settled, w
 async function api(url, opts = {}) {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    if (res.status === 404) throw new Error('接口不存在，请重启 Node 服务后重试（Ctrl+C 后重新 node server.js）');
+    throw new Error('服务器返回异常，请刷新页面或重启服务');
+  }
   if (!res.ok) throw new Error(data.error || '请求失败');
   return data;
 }
@@ -884,7 +892,8 @@ function makeMatchCard(mid) {
   const scores = score.includes(':') ? score.split(':') : ['',''];
   const isFinished = !!result && hasTeams;
   const bs = mData.betStats || {};
-  const pool = Object.values(bs).reduce((s, v) => s + v.total, 0);
+  // 总池含注入；各队注入明细仅在管理后台「奖池注入」查看
+  const pool = Object.values(bs).reduce((s, v) => s + (v.total || 0), 0);
   const lockBadge = locked && !isFinished ? '<span class="lock-badge">🔒 已封盘</span>' : '';
   const scoreBadge = isFinished && score ? `<span style="color:var(--teal);font-size:10px">${score}</span>` : '';
   const poolBadge = pool > 0 ? `<span style="color:var(--gold);font-size:9px">${pool}币</span>` : '';
@@ -936,10 +945,13 @@ function makeMatchCard(mid) {
     const teamScore = myScore ? `<span class="score-val">${myScore}</span>` : '';
     const winMark = isWinner ? '<span style="color:var(--teal);font-size:10px;margin-left:2px">WIN</span>' : '';
 
-    const teamBet = bs[t.name] || { cnt: 0, total: 0 };
-    const odds = (pool > 0 && teamBet.total > 0) ? (pool / teamBet.total).toFixed(1) : 0;
+    const teamBet = bs[t.name] || { cnt: 0, total: 0, userTotal: 0 };
+    const userAmt = teamBet.userTotal != null ? teamBet.userTotal : 0;
+    const teamPoolAmt = teamBet.total || 0;
+    const odds = (pool > 0 && teamPoolAmt > 0) ? (pool / teamPoolAmt).toFixed(1) : 0;
     const oddsTag = odds > 0 ? `<span style="font-size:9px;color:#ed7d31;margin-left:auto">×${odds}</span>` : '';
-    const betInfo = teamBet.cnt > 0 ? `<span style="font-size:9px;color:var(--text2);margin-left:2px">${teamBet.cnt}人${teamBet.total}币</span>` : '';
+    let betInfo = '';
+    if (teamBet.cnt > 0) betInfo += `<span style="font-size:9px;color:var(--text2);margin-left:2px">${teamBet.cnt}人${userAmt}币</span>`;
 
     if (!isFinished) {
       cls = t.resolved ? '' : 'disabled';
@@ -1672,6 +1684,21 @@ async function renderAdmin() {
         <div class="admin-msg" id="adm-msg1"></div>
       </div>
       <div class="admin-panel">
+        <h3>💰 奖池注入（加大竞猜池，不扣用户币）</h3>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:10px">向指定场次双方奖池各注入竞猜币，结算时按池子比例派彩。已结算场次不可注入。</p>
+        <div class="admin-row">
+          <select id="adm-inject-match" onchange="onInjectMatchSelect()">${matchOpts}</select>
+          <span id="adm-inject-t1-label" style="font-size:11px;color:var(--text2);min-width:60px">队1</span>
+          <input id="adm-inject-amt1" type="number" min="0" placeholder="队1金额" style="width:90px">
+          <span id="adm-inject-t2-label" style="font-size:11px;color:var(--text2);min-width:60px">队2</span>
+          <input id="adm-inject-amt2" type="number" min="0" placeholder="队2金额" style="width:90px">
+          <button class="admin-btn primary" onclick="adminPoolInject()">注入奖池</button>
+        </div>
+        <div id="adm-inject-summary" style="font-size:12px;color:var(--gold);margin:6px 0"></div>
+        <div class="scroll-box" style="max-height:160px" id="adm-inject-list"></div>
+        <div class="admin-msg" id="adm-msg-inject"></div>
+      </div>
+      <div class="admin-panel">
         <h3>🔧 更新对阵（淘汰赛填入实际队名）</h3>
         <div class="admin-row">
           <select id="adm-m2" onchange="onMatchSelectForTeams()">${matchOpts}</select>
@@ -1733,7 +1760,7 @@ async function renderAdmin() {
 
   loadAdminData();
   adminLoadSettings();
-  setTimeout(() => { updateResultDropdown(); onMatchSelectForTeams(); restoreAdminTab(); }, 50);
+  setTimeout(() => { updateResultDropdown(); onMatchSelectForTeams(); onInjectMatchSelect(); restoreAdminTab(); }, 50);
 }
 
 function switchAdminTab(btn, tabId) {
@@ -1863,7 +1890,9 @@ function renderMatchPredsTable(filter) {
     const won = mPreds.filter(p => p.settled && p.won);
     const lost = mPreds.filter(p => p.settled && !p.won);
     const pending = mPreds.filter(p => !p.settled);
-    const pool = mPreds.reduce((s, p) => s + (p.amount || 0), 0);
+    const bs = matchesData[mid]?.betStats || {};
+    const pool = Object.values(bs).reduce((s, v) => s + (v.total || 0), 0)
+      || mPreds.reduce((s, p) => s + (p.amount || 0), 0);
     const t1 = displayTeamName(m.team1) || 'TBD';
     const t2 = displayTeamName(m.team2) || 'TBD';
     const matchInfo = m.team1 && m.team2 ? `${t1} vs ${t2}` : '';
@@ -1973,17 +2002,21 @@ function renderMatchStats() {
   const list = document.getElementById('adm-match-stats-list');
   if (!list) return;
   const filter = document.getElementById('adm-stats-filter')?.value || 'all';
-  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0);
+  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0 || (m.injected_amount || 0) > 0);
   if (filter === 'settled') rows = rows.filter(m => !!m.result);
   else if (filter === 'unsettled') rows = rows.filter(m => !m.result);
   if (!rows.length) { list.innerHTML = '<div class="no-data">暂无押注数据</div>'; return; }
 
-  let totalAmt = 0, totalPay = 0;
-  rows.forEach(m => { totalAmt += m.total_amount || 0; totalPay += m.total_payout || 0; });
+  let totalAmt = 0, totalInject = 0, totalPay = 0;
+  rows.forEach(m => {
+    totalAmt += m.total_amount || 0;
+    totalInject += m.injected_amount || 0;
+    totalPay += m.total_payout || 0;
+  });
   const grandNet = totalPay - totalAmt;
 
   let h = '<table class="detail-table" id="tbl-match-stats"><thead><tr>'
-    + '<th>场次</th><th>对阵</th><th>结果</th><th>押注</th><th>派彩</th><th>用户收益</th><th>赢家</th><th>输家</th><th>待结</th>'
+    + '<th>场次</th><th>对阵</th><th>结果</th><th>用户押</th><th>注入</th><th>派彩</th><th>用户收益</th><th>赢家</th><th>输家</th><th>待结</th>'
     + '</tr></thead><tbody>';
   rows.forEach(m => {
     const t1 = displayTeamName(m.team1) || 'TBD';
@@ -1991,6 +2024,7 @@ function renderMatchStats() {
     const matchInfo = (m.team1 && m.team2) ? `${t1} vs ${t2}` : '-';
     const resultInfo = m.result ? `${displayTeamName(m.result)} ${m.score || ''}` : (m.locked ? '已封盘' : '进行中');
     const amt = m.total_amount || 0;
+    const inj = m.injected_amount || 0;
     const pay = m.total_payout || 0;
     const net = pay - amt;
     const settled = !!m.result;
@@ -2005,6 +2039,7 @@ function renderMatchStats() {
       <td style="font-size:11px;color:var(--text2)">${matchInfo}</td>
       <td style="font-size:11px;color:${settled?'var(--teal)':'var(--text2)'}">${resultInfo}</td>
       <td>${amt}</td>
+      <td style="color:#ed7d31">${inj > 0 ? inj : '-'}</td>
       <td>${settled ? pay : '-'}</td>
       <td style="color:${netColor};font-weight:bold">${netText}</td>
       <td class="won-yes">${m.won_count}</td>
@@ -2017,9 +2052,10 @@ function renderMatchStats() {
   h += `</tbody><tfoot><tr style="border-top:2px solid var(--gold3);font-weight:bold;background:rgba(200,170,110,.06)">
     <td colspan="3" style="text-align:right">合计（${rows.length} 场）：</td>
     <td>${totalAmt}</td>
+    <td style="color:#ed7d31">${totalInject || '-'}</td>
     <td>${totalPay}</td>
     <td style="color:${grandColor}">${grandNet > 0 ? '+'+grandNet : grandNet}</td>
-    <td colspan="3"></td>
+    <td colspan="4"></td>
   </tr></tfoot></table>`;
   list.innerHTML = h;
   makeSortable('tbl-match-stats');
@@ -2072,13 +2108,13 @@ function renderTopBets() {
 function exportMatchStats() {
   if (!matchStatsData.length) { toast('暂无数据可导出'); return; }
   const filter = document.getElementById('adm-stats-filter')?.value || 'all';
-  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0);
+  let rows = matchStatsData.filter(m => (m.bet_count || 0) > 0 || (m.injected_amount || 0) > 0);
   if (filter === 'settled') rows = rows.filter(m => !!m.result);
   else if (filter === 'unsettled') rows = rows.filter(m => !m.result);
-  const headers = ['场次','队伍1','队伍2','结果','比分','押注总额','派彩总额','用户净收益','赢家数','输家数','待结数'];
+  const headers = ['场次','队伍1','队伍2','结果','比分','用户押注','奖池注入','派彩总额','用户净收益','赢家数','输家数','待结数'];
   const data = rows.map(m => {
     const net = (m.total_payout || 0) - (m.total_amount || 0);
-    return [m.id, m.team1 || '', m.team2 || '', m.result || '', m.score || '', m.total_amount || 0, m.total_payout || 0, m.result ? net : '', m.won_count, m.lost_count, m.pending_count];
+    return [m.id, m.team1 || '', m.team2 || '', m.result || '', m.score || '', m.total_amount || 0, m.injected_amount || 0, m.total_payout || 0, m.result ? net : '', m.won_count, m.lost_count, m.pending_count];
   });
   const ts = new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
   downloadCSV(`match_stats_${ts}.csv`, headers, data);
@@ -2236,6 +2272,89 @@ async function adminDeleteMarket(id) {
     toast('盘口已删除');
     loadAllData();
   } catch (e) { toast(e.message); }
+}
+
+function getMatchRealTeams(m) {
+  if (!m) return [];
+  return [m.team1, m.team2].filter(t => t && !/^[SWL]/.test(t));
+}
+
+async function onInjectMatchSelect() {
+  const mid = document.getElementById('adm-inject-match')?.value;
+  const m = matchesData[mid];
+  const teams = getMatchRealTeams(m);
+  const l1 = document.getElementById('adm-inject-t1-label');
+  const l2 = document.getElementById('adm-inject-t2-label');
+  if (l1) l1.textContent = teams[0] ? displayTeamName(teams[0]) : '队1';
+  if (l2) l2.textContent = teams[1] ? displayTeamName(teams[1]) : '队2';
+  await loadInjectList();
+}
+
+async function loadInjectList() {
+  const mid = document.getElementById('adm-inject-match')?.value;
+  const summary = document.getElementById('adm-inject-summary');
+  const list = document.getElementById('adm-inject-list');
+  if (!mid || !summary || !list) return;
+  try {
+    const data = await api('/api/admin/pool-injections?match_id=' + encodeURIComponent(mid));
+    const byTeam = data.byTeam || {};
+    const teams = getMatchRealTeams(data.match || matchesData[mid]);
+    const t1 = teams[0];
+    const t2 = teams[1];
+    const t1Amt = t1 ? (byTeam[t1] || 0) : 0;
+    const t2Amt = t2 ? (byTeam[t2] || 0) : 0;
+    const total = data.total || 0;
+    if (total > 0) {
+      summary.textContent = `当前注入：${t1 ? displayTeamName(t1) + ' ' + t1Amt : ''}${t1 && t2 ? ' · ' : ''}${t2 ? displayTeamName(t2) + ' ' + t2Amt : ''}（合计 ${total} 币）`;
+    } else {
+      summary.textContent = '当前无注入';
+    }
+    const rows = data.rows || [];
+    if (!rows.length) {
+      list.innerHTML = '<div style="font-size:11px;color:var(--text2);padding:6px">暂无注入记录</div>';
+      return;
+    }
+    list.innerHTML = '<table class="detail-table" style="font-size:11px"><thead><tr><th>时间</th><th>队伍</th><th>金额</th><th></th></tr></thead><tbody>'
+      + rows.map(r => `<tr>
+        <td>${r.created_at || ''}</td>
+        <td>${displayTeamName(r.team)}</td>
+        <td style="color:var(--gold)">${r.amount}</td>
+        <td><button class="admin-btn danger" style="padding:2px 8px;font-size:10px" onclick="adminDeleteInject(${r.id})">删除</button></td>
+      </tr>`).join('')
+      + '</tbody></table>';
+  } catch (e) {
+    summary.textContent = '';
+    list.innerHTML = '';
+  }
+}
+
+async function adminPoolInject() {
+  const match_id = document.getElementById('adm-inject-match')?.value;
+  const team1_amount = parseInt(document.getElementById('adm-inject-amt1')?.value, 10) || 0;
+  const team2_amount = parseInt(document.getElementById('adm-inject-amt2')?.value, 10) || 0;
+  const msgEl = document.getElementById('adm-msg-inject');
+  if (!match_id) { msgEl.textContent = '❌ 请选择场次'; return; }
+  if (team1_amount <= 0 && team2_amount <= 0) { msgEl.textContent = '❌ 至少一方金额大于 0'; return; }
+  if (!confirm(`确认向 ${match_id} 注入奖池？队1 ${team1_amount} + 队2 ${team2_amount} = ${team1_amount + team2_amount} 币`)) return;
+  try {
+    const data = await api('/api/admin/pool-inject', { method: 'POST', body: { match_id, team1_amount, team2_amount } });
+    msgEl.textContent = `✅ 已注入 ${data.added} 币，本场累计注入 ${data.total} 币`;
+    document.getElementById('adm-inject-amt1').value = '';
+    document.getElementById('adm-inject-amt2').value = '';
+    await loadInjectList();
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
+}
+
+async function adminDeleteInject(id) {
+  if (!confirm('确认删除该条注入记录？')) return;
+  const msgEl = document.getElementById('adm-msg-inject');
+  try {
+    await api('/api/admin/pool-inject/' + id, { method: 'DELETE' });
+    msgEl.textContent = '✅ 已删除';
+    await loadInjectList();
+    loadAllData();
+  } catch (e) { msgEl.textContent = '❌ ' + e.message; }
 }
 
 function updateResultDropdown() {

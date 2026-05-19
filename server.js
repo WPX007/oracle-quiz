@@ -101,6 +101,14 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT
   );
+  CREATE TABLE IF NOT EXISTS pool_injections (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id   TEXT NOT NULL,
+    team       TEXT NOT NULL,
+    amount     INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (match_id) REFERENCES matches(id)
+  );
 `);
 
 try { db.prepare("ALTER TABLE matches ADD COLUMN start_time TEXT DEFAULT ''").run(); } catch (e) {}
@@ -115,7 +123,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_coin_logs_user      ON coin_logs(user_id);
   CREATE INDEX IF NOT EXISTS idx_coin_logs_created   ON coin_logs(created_at);
   CREATE INDEX IF NOT EXISTS idx_markets_settled     ON markets(settled);
+  CREATE INDEX IF NOT EXISTS idx_pool_injections_match ON pool_injections(match_id);
 `);
+
+function getMatchInjectionsByTeam(matchId) {
+  const rows = db.prepare(`
+    SELECT team, COALESCE(SUM(amount), 0) as total
+    FROM pool_injections WHERE match_id = ?
+    GROUP BY team
+  `).all(matchId);
+  const map = {};
+  for (const r of rows) map[r.team] = r.total;
+  return map;
+}
+
+function getMatchInjectionTotal(matchId) {
+  return db.prepare('SELECT COALESCE(SUM(amount), 0) as t FROM pool_injections WHERE match_id = ?').get(matchId).t;
+}
 
 // ── Team name aliases (old → new) for canonical comparison ─
 const TEAM_OLD_TO_NEW = {
@@ -508,7 +532,18 @@ app.get('/api/matches', (req, res) => {
   const statsMap = {};
   for (const s of betStats) {
     if (!statsMap[s.match_id]) statsMap[s.match_id] = {};
-    statsMap[s.match_id][s.pick] = { cnt: s.cnt, total: s.total };
+    statsMap[s.match_id][s.pick] = { cnt: s.cnt, userTotal: s.total, total: s.total };
+  }
+  // 注入计入总池与赔率；各队注入明细不在此接口暴露（见管理后台 pool-injections）
+  const injections = db.prepare(`
+    SELECT match_id, team, COALESCE(SUM(amount), 0) as total
+    FROM pool_injections GROUP BY match_id, team
+  `).all();
+  for (const inj of injections) {
+    if (!statsMap[inj.match_id]) statsMap[inj.match_id] = {};
+    const cur = statsMap[inj.match_id][inj.team] || { cnt: 0, userTotal: 0, total: 0 };
+    cur.total = (cur.userTotal || 0) + inj.total;
+    statsMap[inj.match_id][inj.team] = cur;
   }
   const result = matches.map(m => ({ ...m, betStats: statsMap[m.id] || {} }));
   res.json({ matches: result });
@@ -569,9 +604,14 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
     .run(result, score || '', match_id);
 
   const preds = db.prepare('SELECT * FROM predictions WHERE match_id = ?').all(match_id);
-  const pool = preds.reduce((s, p) => s + p.amount, 0);
+  const injectionByTeam = getMatchInjectionsByTeam(match_id);
+  const injectionTotal = getMatchInjectionTotal(match_id);
+  const userPool = preds.reduce((s, p) => s + p.amount, 0);
+  const pool = userPool + injectionTotal;
   const winners = preds.filter(p => p.pick === result);
-  const winnerTotal = winners.reduce((s, p) => s + p.amount, 0);
+  const winnerUserTotal = winners.reduce((s, p) => s + p.amount, 0);
+  const winnerInjected = injectionByTeam[result] || 0;
+  const winnerTotal = winnerUserTotal + winnerInjected;
 
   const updatePred = db.prepare('UPDATE predictions SET settled = 1, won = ?, payout = ? WHERE id = ?');
 
@@ -590,6 +630,62 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
   tx();
 
   res.json({ ok: true, settled: preds.length, pool, winners: winners.length });
+});
+
+app.get('/api/admin/pool-injections', requireAuth, requireAdmin, (req, res) => {
+  const { match_id } = req.query;
+  if (!match_id) return res.status(400).json({ error: '缺少 match_id' });
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
+  if (!match) return res.status(404).json({ error: '比赛不存在' });
+  const rows = db.prepare(`
+    SELECT id, match_id, team, amount, created_at
+    FROM pool_injections WHERE match_id = ?
+    ORDER BY id DESC
+  `).all(match_id);
+  const byTeam = getMatchInjectionsByTeam(match_id);
+  res.json({ match, rows, byTeam, total: getMatchInjectionTotal(match_id) });
+});
+
+app.post('/api/admin/pool-inject', requireAuth, requireAdmin, (req, res) => {
+  const { match_id, team1_amount, team2_amount, note } = req.body;
+  if (!match_id) return res.status(400).json({ error: '缺少 match_id' });
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
+  if (!match) return res.status(404).json({ error: '比赛不存在' });
+  if (match.result) return res.status(400).json({ error: '比赛已结算，无法注入' });
+
+  const teams = [match.team1, match.team2].filter(t => t && !/^[SWL]/.test(t));
+  if (teams.length < 2) return res.status(400).json({ error: '请先设置两队实际队名' });
+
+  const a1 = parseInt(team1_amount, 10) || 0;
+  const a2 = parseInt(team2_amount, 10) || 0;
+  if (a1 <= 0 && a2 <= 0) return res.status(400).json({ error: '至少一方注入金额大于 0' });
+  if (a1 < 0 || a2 < 0) return res.status(400).json({ error: '金额不能为负' });
+
+  const insert = db.prepare('INSERT INTO pool_injections (match_id, team, amount) VALUES (?, ?, ?)');
+  const tx = db.transaction(() => {
+    if (a1 > 0) insert.run(match_id, teams[0], a1);
+    if (a2 > 0) insert.run(match_id, teams[1], a2);
+  });
+  tx();
+
+  const added = a1 + a2;
+  const byTeam = getMatchInjectionsByTeam(match_id);
+  res.json({
+    ok: true,
+    added,
+    byTeam,
+    total: getMatchInjectionTotal(match_id),
+    message: note || `已向 ${match_id} 注入奖池 ${added} 币`,
+  });
+});
+
+app.delete('/api/admin/pool-inject/:id', requireAuth, requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT * FROM pool_injections WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: '记录不存在' });
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(row.match_id);
+  if (match?.result) return res.status(400).json({ error: '比赛已结算，无法删除注入' });
+  db.prepare('DELETE FROM pool_injections WHERE id = ?').run(req.params.id);
+  res.json({ ok: true, byTeam: getMatchInjectionsByTeam(row.match_id), total: getMatchInjectionTotal(row.match_id) });
 });
 
 app.post('/api/admin/lock-match', requireAuth, requireAdmin, (req, res) => {
@@ -819,6 +915,7 @@ app.get('/api/admin/match-stats', requireAuth, requireAdmin, (req, res) => {
   const rows = db.prepare(`
     SELECT m.id, m.label, m.team1, m.team2, m.result, m.score, m.locked, m.start_time,
       COALESCE((SELECT SUM(amount) FROM predictions p WHERE p.match_id = m.id), 0) as total_amount,
+      COALESCE((SELECT SUM(amount) FROM pool_injections pi WHERE pi.match_id = m.id), 0) as injected_amount,
       COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id), 0) as bet_count,
       COALESCE((SELECT SUM(payout) FROM predictions p WHERE p.match_id = m.id AND p.settled = 1 AND p.won = 1), 0) as total_payout,
       COALESCE((SELECT COUNT(*)  FROM predictions p WHERE p.match_id = m.id AND p.settled = 1 AND p.won = 1), 0) as won_count,
