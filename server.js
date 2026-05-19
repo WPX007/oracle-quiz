@@ -545,6 +545,17 @@ app.get('/api/matches', (req, res) => {
     cur.total = (cur.userTotal || 0) + inj.total;
     statsMap[inj.match_id][inj.team] = cur;
   }
+  for (const mid of Object.keys(statsMap)) {
+    const bs = statsMap[mid];
+    const pool = Object.values(bs).reduce((s, st) => s + (st.total || 0), 0);
+    for (const pick of Object.keys(bs)) {
+      const st = bs[pick];
+      // 预估赔率 = 总奖池 / 该队用户押注（注入只加厚奖池，不稀释赔率）
+      st.odds = (st.cnt > 0 && pool > 0 && st.userTotal > 0)
+        ? Math.round((pool / st.userTotal) * 10) / 10
+        : 0;
+    }
+  }
   const result = matches.map(m => ({ ...m, betStats: statsMap[m.id] || {} }));
   res.json({ matches: result });
 });
@@ -604,14 +615,12 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
     .run(result, score || '', match_id);
 
   const preds = db.prepare('SELECT * FROM predictions WHERE match_id = ?').all(match_id);
-  const injectionByTeam = getMatchInjectionsByTeam(match_id);
   const injectionTotal = getMatchInjectionTotal(match_id);
   const userPool = preds.reduce((s, p) => s + p.amount, 0);
   const pool = userPool + injectionTotal;
   const winners = preds.filter(p => p.pick === result);
-  const winnerUserTotal = winners.reduce((s, p) => s + p.amount, 0);
-  const winnerInjected = injectionByTeam[result] || 0;
-  const winnerTotal = winnerUserTotal + winnerInjected;
+  // 注入计入总池，但不参与胜方分母；胜方用户按押注比例瓜分全部奖池
+  const winnerTotal = winners.reduce((s, p) => s + p.amount, 0);
 
   const updatePred = db.prepare('UPDATE predictions SET settled = 1, won = ?, payout = ? WHERE id = ?');
 

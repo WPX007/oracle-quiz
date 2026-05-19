@@ -892,7 +892,7 @@ function makeMatchCard(mid) {
   const scores = score.includes(':') ? score.split(':') : ['',''];
   const isFinished = !!result && hasTeams;
   const bs = mData.betStats || {};
-  // 总池含注入；各队注入明细仅在管理后台「奖池注入」查看
+  // 总池含注入；赔率=总池/该队用户押注（注入加厚奖池不稀释），仅有人押注时显示
   const pool = Object.values(bs).reduce((s, v) => s + (v.total || 0), 0);
   const lockBadge = locked && !isFinished ? '<span class="lock-badge">🔒 已封盘</span>' : '';
   const scoreBadge = isFinished && score ? `<span style="color:var(--teal);font-size:10px">${score}</span>` : '';
@@ -945,11 +945,15 @@ function makeMatchCard(mid) {
     const teamScore = myScore ? `<span class="score-val">${myScore}</span>` : '';
     const winMark = isWinner ? '<span style="color:var(--teal);font-size:10px;margin-left:2px">WIN</span>' : '';
 
-    const teamBet = bs[t.name] || { cnt: 0, total: 0, userTotal: 0 };
+    const teamBet = bs[t.name] || { cnt: 0, total: 0, userTotal: 0, odds: 0 };
     const userAmt = teamBet.userTotal != null ? teamBet.userTotal : 0;
-    const teamPoolAmt = teamBet.total || 0;
-    const odds = (pool > 0 && teamPoolAmt > 0) ? (pool / teamPoolAmt).toFixed(1) : 0;
-    const oddsTag = odds > 0 ? `<span style="font-size:9px;color:#ed7d31;margin-left:auto">×${odds}</span>` : '';
+    let odds = teamBet.odds || 0;
+    if (!odds && teamBet.cnt > 0 && pool > 0 && userAmt > 0) {
+      odds = Math.round((pool / userAmt) * 10) / 10;
+    }
+    // 无用户押注的一侧（仅有隐藏补贴）不显示赔率
+    const oddsTag = (teamBet.cnt > 0 && odds > 0)
+      ? `<span style="font-size:9px;color:#ed7d31;margin-left:auto">×${odds}</span>` : '';
     let betInfo = '';
     if (teamBet.cnt > 0) betInfo += `<span style="font-size:9px;color:var(--text2);margin-left:2px">${teamBet.cnt}人${userAmt}币</span>`;
 
@@ -1925,13 +1929,16 @@ function showAdminMatchPredsDetail(mid) {
   const groupBy = team => all.filter(p => canonicalTeam(p.pick) === canonicalTeam(team))
     .sort((a, b) => (b.amount || 0) - (a.amount || 0));
   const others = all.filter(p => !t1 || !t2 || (canonicalTeam(p.pick) !== canonicalTeam(t1) && canonicalTeam(p.pick) !== canonicalTeam(t2)));
-  const totalPool = all.reduce((s, p) => s + (p.amount || 0), 0);
+  const bs = matchesData[mid]?.betStats || {};
+  const totalPool = Object.values(bs).reduce((s, v) => s + (v.total || 0), 0)
+    || all.reduce((s, p) => s + (p.amount || 0), 0);
 
   function renderColumn(team, displayName, isWinner) {
     const list = team ? groupBy(team) : [];
     const totalAmt = list.reduce((s, p) => s + (p.amount || 0), 0);
     const totalPayout = list.reduce((s, p) => s + (p.payout || 0), 0);
-    const odds = totalAmt > 0 ? (totalPool / totalAmt).toFixed(2) : '-';
+    const odds = (list.length > 0 && totalPool > 0 && totalAmt > 0)
+      ? (totalPool / totalAmt).toFixed(2) : '-';
     const headerColor = isWinner ? 'var(--teal)' : (m.result ? 'var(--red)' : 'var(--gold)');
     const headerLabel = m.result ? (isWinner ? '胜' : '负') : '';
     let html = `<div style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--border);border-radius:6px;overflow:hidden">
