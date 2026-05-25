@@ -732,6 +732,7 @@ async function loadAllData() {
   renderLeaderboard(lbRes.leaderboard);
   if (currentUser.is_admin) renderAdmin();
   updateStats(predRes, lbRes.leaderboard);
+  restoreMainTab();
 }
 
 function updateStats(predRes, lb) {
@@ -755,16 +756,32 @@ function updateStats(predRes, lb) {
 let lastTabFetchAt = 0;
 const TAB_FETCH_THROTTLE_MS = 5000;
 const REFRESH_TABS = new Set(['swiss', 'markets', 'bracket', 'leaderboard']);
+const MAIN_TAB_KEY = 'quizMainTab';
+const VALID_MAIN_TABS = new Set(['swiss', 'markets', 'bracket', 'leaderboard', 'rules', 'admin']);
+
+function switchMainTab(tab, save = true) {
+  if (!VALID_MAIN_TABS.has(tab)) tab = 'swiss';
+  if (tab === 'admin' && !currentUser?.is_admin) tab = 'swiss';
+  document.querySelectorAll('#main-nav button').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const sec = document.getElementById('sec-' + tab);
+  if (sec) sec.classList.add('active');
+  if (save) sessionStorage.setItem(MAIN_TAB_KEY, tab);
+  return tab;
+}
+
+function restoreMainTab() {
+  const saved = sessionStorage.getItem(MAIN_TAB_KEY);
+  switchMainTab(saved || 'swiss', false);
+}
 
 document.getElementById('main-nav').addEventListener('click', e => {
   const btn = e.target.closest('button[data-tab]');
   if (!btn) return;
-  document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('sec-' + btn.dataset.tab).classList.add('active');
+  const tab = switchMainTab(btn.dataset.tab);
 
-  const tab = btn.dataset.tab;
   if (REFRESH_TABS.has(tab)) {
     const now = Date.now();
     if (now - lastTabFetchAt > TAB_FETCH_THROTTLE_MS) {
@@ -2636,13 +2653,8 @@ async function adminLock(locked) {
 }
 
 function jumpToMatchTab(mid) {
-  let tab = 'bracket';
-  if (mid.startsWith('SR')) tab = 'swiss';
-  document.querySelectorAll('#main-nav button').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`#main-nav button[data-tab="${tab}"]`);
-  if (btn) btn.classList.add('active');
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.getElementById('sec-' + tab).classList.add('active');
+  const tab = mid.startsWith('SR') ? 'swiss' : 'bracket';
+  switchMainTab(tab);
 }
 
 function onMatchSelectForTeams() {

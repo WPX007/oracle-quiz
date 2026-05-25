@@ -246,6 +246,26 @@ const SWISS_MATCHES = [
   ['SR5_22_3','R5 · 2-2','','',3,'swiss_r5'],
 ];
 
+// 已从赛程移除的旧场次
+const REMOVED_MATCH_IDS = ['SR4_12_4', 'SR4_21_4'];
+
+function cleanupRemovedMatches() {
+  const validSwiss = new Set(SWISS_MATCHES.map(m => m[0]));
+  const toRemove = db.prepare('SELECT id FROM matches').all()
+    .map(r => r.id)
+    .filter(id => REMOVED_MATCH_IDS.includes(id) || (id.startsWith('SR') && !validSwiss.has(id)));
+  if (!toRemove.length) return;
+  const tx = db.transaction(() => {
+    for (const id of toRemove) {
+      db.prepare('DELETE FROM predictions WHERE match_id = ?').run(id);
+      db.prepare('DELETE FROM pool_injections WHERE match_id = ?').run(id);
+      db.prepare('DELETE FROM matches WHERE id = ?').run(id);
+      console.log(`Removed stale match: ${id}`);
+    }
+  });
+  tx();
+}
+
 function seedDB() {
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   if (userCount === 0) {
@@ -271,6 +291,7 @@ function seedDB() {
     tx();
     console.log(`Seeded ${MATCHES_SEED.length + SWISS_MATCHES.length} matches`);
   }
+  cleanupRemovedMatches();
 }
 seedDB();
 
