@@ -858,21 +858,34 @@ async function doChangePwd() {
 }
 
 // ── Bracket ───────────────────────────────────────────────
+/** 解析场次双方队名（种子位 / 上游晋级，仅依据官方赛果，不用用户押注） */
+function getMatchSides(mid) {
+  const mDef = MATCH_TEAMS[mid];
+  const mData = matchesData[mid] || {};
+  let t1 = mData.team1 && !/^[SWL]/.test(mData.team1) ? mData.team1 : null;
+  let t2 = mData.team2 && !/^[SWL]/.test(mData.team2) ? mData.team2 : null;
+  if (mDef) {
+    if (!t1) t1 = resolveTeamName(mDef.t1);
+    if (!t2) t2 = resolveTeamName(mDef.t2);
+  }
+  return { t1, t2 };
+}
+
+/** W1w / W2l 等：仅在前序场次已录入官方结果后返回队名 */
 function resolveTeamName(ref) {
   if (!ref) return null;
   if (ref.startsWith('S')) return '种子' + ref.slice(1);
   const mid = ref.slice(0, -1);
   const type = ref.slice(-1);
-  const pred = myPredictions[mid];
-  const pick = pred?.pick;
-  if (!pick) return null;
-  if (type === 'w') return pick;
-  const m = MATCH_TEAMS[mid];
-  if (!m) return null;
-  const t1 = resolveTeamName(m.t1);
-  const t2 = resolveTeamName(m.t2);
-  if (pick === t1) return t2;
-  if (pick === t2) return t1;
+  const mData = matchesData[mid];
+  if (!mData?.result) return null;
+  const { t1, t2 } = getMatchSides(mid);
+  if (!t1 || !t2) return null;
+  const winner = mData.result;
+  const w = canonicalTeam(winner);
+  if (type === 'w') return winner;
+  if (canonicalTeam(t1) === w) return t2;
+  if (canonicalTeam(t2) === w) return t1;
   return null;
 }
 
