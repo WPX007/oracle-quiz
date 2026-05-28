@@ -480,9 +480,9 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
   </div>
 
   <div class="nav" id="main-nav">
-    <button class="active" data-tab="swiss">瑞士轮</button>
+    <button class="active" data-tab="bracket">双败淘汰赛</button>
     <button data-tab="markets">比赛竞猜</button>
-    <button data-tab="bracket">双败淘汰赛</button>
+    <button data-tab="swiss">瑞士轮</button>
     <button data-tab="leaderboard">排行榜</button>
     <button data-tab="rules">玩法介绍</button>
     <button data-tab="admin" id="admin-tab" style="display:none">管理后台</button>
@@ -498,9 +498,9 @@ body{background:var(--bg);color:var(--text);font-family:'Microsoft YaHei','PingF
   </div>
 
   <div class="container">
-    <div class="section active" id="sec-swiss"></div>
+    <div class="section" id="sec-swiss"></div>
     <div class="section" id="sec-markets"></div>
-    <div class="section" id="sec-bracket"></div>
+    <div class="section active" id="sec-bracket"></div>
     <div class="section" id="sec-leaderboard"></div>
     <div class="section" id="sec-rules">
       <div class="rules-panel">
@@ -757,11 +757,12 @@ let lastTabFetchAt = 0;
 const TAB_FETCH_THROTTLE_MS = 5000;
 const REFRESH_TABS = new Set(['swiss', 'markets', 'bracket', 'leaderboard']);
 const MAIN_TAB_KEY = 'quizMainTab';
+const DEFAULT_MAIN_TAB = 'bracket';
 const VALID_MAIN_TABS = new Set(['swiss', 'markets', 'bracket', 'leaderboard', 'rules', 'admin']);
 
 function switchMainTab(tab, save = true) {
-  if (!VALID_MAIN_TABS.has(tab)) tab = 'swiss';
-  if (tab === 'admin' && !currentUser?.is_admin) tab = 'swiss';
+  if (!VALID_MAIN_TABS.has(tab)) tab = DEFAULT_MAIN_TAB;
+  if (tab === 'admin' && !currentUser?.is_admin) tab = DEFAULT_MAIN_TAB;
   document.querySelectorAll('#main-nav button').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
@@ -774,7 +775,7 @@ function switchMainTab(tab, save = true) {
 
 function restoreMainTab() {
   const saved = sessionStorage.getItem(MAIN_TAB_KEY);
-  switchMainTab(saved || 'swiss', false);
+  switchMainTab(saved || DEFAULT_MAIN_TAB, false);
 }
 
 document.getElementById('main-nav').addEventListener('click', e => {
