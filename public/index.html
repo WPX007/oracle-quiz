@@ -2312,15 +2312,20 @@ async function adminDeleteMarket(id) {
   } catch (e) { toast(e.message); }
 }
 
-function getMatchRealTeams(m) {
+function getMatchRealTeams(m, mid) {
   if (!m) return [];
-  return [m.team1, m.team2].filter(t => t && !/^[SWL]/.test(t));
+  const direct = [m.team1, m.team2].filter(t => t && !/^[SWL]/.test(t));
+  if (direct.length === 2) return direct;
+  const id = mid || m.id;
+  if (!id) return direct;
+  const sides = getMatchSides(id);
+  return [sides.t1, sides.t2].filter(Boolean);
 }
 
 async function onInjectMatchSelect() {
   const mid = document.getElementById('adm-inject-match')?.value;
   const m = matchesData[mid];
-  const teams = getMatchRealTeams(m);
+  const teams = getMatchRealTeams(m, mid);
   const l1 = document.getElementById('adm-inject-t1-label');
   const l2 = document.getElementById('adm-inject-t2-label');
   if (l1) l1.textContent = teams[0] ? displayTeamName(teams[0]) : '队1';
@@ -2336,7 +2341,7 @@ async function loadInjectList() {
   try {
     const data = await api('/api/admin/pool-injections?match_id=' + encodeURIComponent(mid));
     const byTeam = data.byTeam || {};
-    const teams = getMatchRealTeams(data.match || matchesData[mid]);
+    const teams = data.teams?.length === 2 ? data.teams : getMatchRealTeams(matchesData[mid] || data.match, mid);
     const t1 = teams[0];
     const t2 = teams[1];
     const t1Amt = t1 ? (byTeam[t1] || 0) : 0;
@@ -2403,7 +2408,7 @@ function updateResultDropdown() {
   if (!mid || !sel) return;
   const m = matchesData[mid];
   if (!m) return;
-  const teams = [m.team1, m.team2].filter(t => t && !t.match(/^[SWL]/));
+  const teams = getMatchRealTeams(m, mid);
   const hasTeams = teams.length === 2;
   if (!hasTeams) {
     sel.innerHTML = '<option value="">（未设置队伍）</option>';
@@ -2678,8 +2683,9 @@ function onMatchSelectForTeams() {
   if (!m) return;
   const t1El = document.getElementById('adm-t1');
   const t2El = document.getElementById('adm-t2');
-  if (t1El) t1El.value = m.team1 && !m.team1.match(/^[SWL]/) ? m.team1 : '';
-  if (t2El) t2El.value = m.team2 && !m.team2.match(/^[SWL]/) ? m.team2 : '';
+  const teams = getMatchRealTeams(m, mid);
+  if (t1El) t1El.value = teams[0] || '';
+  if (t2El) t2El.value = teams[1] || '';
 
   const match = (m.start_time || '').match(/^(\d+)\/(\d+)\s+(\d+:\d+)$/);
   const mSel = document.getElementById('adm-time-m');

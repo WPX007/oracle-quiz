@@ -200,6 +200,39 @@ const MATCHES_SEED = [
   ['L6','败者组决赛','L5w','W7l',3,'losers'],
   ['GF','总决赛','W7w','L6w',5,'final'],
 ];
+const MATCH_SEED_BY_ID = Object.fromEntries(MATCHES_SEED.map(m => [m[0], m]));
+
+function isConcreteTeamName(name) {
+  return !!name && !/^[SWL]/.test(name);
+}
+
+function getServerMatchSides(matchId) {
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match) return [];
+  let t1 = isConcreteTeamName(match.team1) ? match.team1 : null;
+  let t2 = isConcreteTeamName(match.team2) ? match.team2 : null;
+  const seed = MATCH_SEED_BY_ID[matchId];
+  if (seed) {
+    if (!t1) t1 = resolveServerTeamRef(seed[2]);
+    if (!t2) t2 = resolveServerTeamRef(seed[3]);
+  }
+  return [t1, t2].filter(Boolean);
+}
+
+function resolveServerTeamRef(ref) {
+  if (!ref || ref.startsWith('S')) return null;
+  const matchId = ref.slice(0, -1);
+  const type = ref.slice(-1);
+  const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(matchId);
+  if (!match?.result) return null;
+  const [t1, t2] = getServerMatchSides(matchId);
+  if (!t1 || !t2) return null;
+  if (type === 'w') return match.result;
+  const winner = canonicalTeam(match.result);
+  if (canonicalTeam(t1) === winner) return t2;
+  if (canonicalTeam(t2) === winner) return t1;
+  return null;
+}
 
 const SWISS_MATCHES = [
   // R1: 0-0 (8 BO3)
@@ -522,9 +555,10 @@ app.post('/api/predict', requireAuth, (req, res) => {
 
   const user = db.prepare('SELECT points, team FROM users WHERE id = ?').get(req.session.userId);
   if (betAmount > user.points) return res.status(400).json({ error: `竞彩币不足（可用 ${user.points}）` });
+  const teams = getServerMatchSides(match_id);
   const myCanon = canonicalTeam(user.team);
-  const t1Canon = canonicalTeam(match.team1);
-  const t2Canon = canonicalTeam(match.team2);
+  const t1Canon = canonicalTeam(teams[0] || match.team1);
+  const t2Canon = canonicalTeam(teams[1] || match.team2);
   const pickCanon = canonicalTeam(pick);
   if (myCanon && (myCanon === t1Canon || myCanon === t2Canon) && pickCanon !== myCanon) {
     return res.status(400).json({ error: `本场你的队伍参赛，只能押自己队伍获胜` });
@@ -625,8 +659,11 @@ app.post('/api/admin/match-result', requireAuth, requireAdmin, (req, res) => {
 
   const match = db.prepare('SELECT * FROM matches WHERE id = ?').get(match_id);
   if (!match) return res.status(404).json({ error: '比赛不存在' });
-  if (!match.team1 || !match.team2) return res.status(400).json({ error: '该场比赛还没有设置队伍' });
-  if (result !== match.team1 && result !== match.team2) return res.status(400).json({ error: `胜方必须是 ${match.team1} 或 ${match.team2}` });
+  const teams = getServerMatchSides(match_id);
+  if (teams.length < 2) return res.status(400).json({ error: '该场比赛还没有设置队伍' });
+  if (!teams.some(t => canonicalTeam(t) === canonicalTeam(result))) {
+    return res.status(400).json({ error: `胜方必须是 ${teams[0]} 或 ${teams[1]}` });
+  }
 
   if (match.result) {
     undoMatchResult(match_id);
@@ -673,7 +710,7 @@ app.get('/api/admin/pool-injections', requireAuth, requireAdmin, (req, res) => {
     ORDER BY id DESC
   `).all(match_id);
   const byTeam = getMatchInjectionsByTeam(match_id);
-  res.json({ match, rows, byTeam, total: getMatchInjectionTotal(match_id) });
+  res.json({ match, teams: getServerMatchSides(match_id), rows, byTeam, total: getMatchInjectionTotal(match_id) });
 });
 
 app.post('/api/admin/pool-inject', requireAuth, requireAdmin, (req, res) => {
@@ -683,7 +720,7 @@ app.post('/api/admin/pool-inject', requireAuth, requireAdmin, (req, res) => {
   if (!match) return res.status(404).json({ error: '比赛不存在' });
   if (match.result) return res.status(400).json({ error: '比赛已结算，无法注入' });
 
-  const teams = [match.team1, match.team2].filter(t => t && !/^[SWL]/.test(t));
+  const teams = getServerMatchSides(match_id);
   if (teams.length < 2) return res.status(400).json({ error: '请先设置两队实际队名' });
 
   const a1 = parseInt(team1_amount, 10) || 0;
