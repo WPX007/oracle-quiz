@@ -578,16 +578,21 @@ app.post('/api/predict', requireAuth, (req, res) => {
 app.get('/api/matches', (req, res) => {
   const matches = db.prepare('SELECT * FROM matches').all();
   const betStats = db.prepare(`
-    SELECT p.match_id, p.pick, COUNT(*) as cnt, COALESCE(SUM(p.amount),0) as total
+    SELECT p.match_id, p.pick, p.settled, COUNT(*) as cnt, COALESCE(SUM(p.amount),0) as total
     FROM predictions p
-    JOIN matches m ON m.id = p.match_id
-    WHERE p.settled = 0 OR (p.pick = m.team1 OR p.pick = m.team2)
-    GROUP BY p.match_id, p.pick
+    GROUP BY p.match_id, p.pick, p.settled
   `).all();
   const statsMap = {};
   for (const s of betStats) {
+    const sides = getServerMatchSides(s.match_id);
+    const isCurrentSide = sides.some(t => canonicalTeam(t) === canonicalTeam(s.pick));
+    if (s.settled && sides.length === 2 && !isCurrentSide) continue;
     if (!statsMap[s.match_id]) statsMap[s.match_id] = {};
-    statsMap[s.match_id][s.pick] = { cnt: s.cnt, userTotal: s.total, total: s.total };
+    const cur = statsMap[s.match_id][s.pick] || { cnt: 0, userTotal: 0, total: 0 };
+    cur.cnt += s.cnt;
+    cur.userTotal += s.total;
+    cur.total += s.total;
+    statsMap[s.match_id][s.pick] = cur;
   }
   // 注入计入总池与赔率；各队注入明细不在此接口暴露（见管理后台 pool-injections）
   const injections = db.prepare(`

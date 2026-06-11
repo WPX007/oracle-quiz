@@ -1928,9 +1928,10 @@ function renderMatchPredsTable(filter) {
     const bs = matchesData[mid]?.betStats || {};
     const pool = Object.values(bs).reduce((s, v) => s + (v.total || 0), 0)
       || mPreds.reduce((s, p) => s + (p.amount || 0), 0);
-    const t1 = displayTeamName(m.team1) || 'TBD';
-    const t2 = displayTeamName(m.team2) || 'TBD';
-    const matchInfo = m.team1 && m.team2 ? `${t1} vs ${t2}` : '';
+    const teams = getDisplayTeamsForMatch(mid, mPreds);
+    const t1 = displayTeamName(teams[0]) || 'TBD';
+    const t2 = displayTeamName(teams[1]) || 'TBD';
+    const matchInfo = teams.length === 2 ? `${t1} vs ${t2}` : '';
     const resultInfo = m.result ? ` → ${displayTeamName(m.result)} ${m.score || ''}` : '';
 
     h += `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;cursor:pointer;transition:.15s" onmouseover="this.style.borderColor='var(--gold3)'" onmouseout="this.style.borderColor='var(--border)'" onclick="showAdminMatchPredsDetail('${mid}')">`;
@@ -1947,12 +1948,31 @@ function renderMatchPredsTable(filter) {
   document.getElementById('ov-match-preds').innerHTML = h;
 }
 
+function getDisplayTeamsForMatch(mid, preds = []) {
+  const m = matchesData[mid] || {};
+  const resolved = getMatchRealTeams(m, mid);
+  if (resolved.length === 2) return resolved;
+
+  const teams = [];
+  const addTeam = team => {
+    if (!team || /^[SWL]/.test(team)) return;
+    if (teams.some(t => canonicalTeam(t) === canonicalTeam(team))) return;
+    teams.push(team);
+  };
+
+  // 已结算的自动占位场次，优先使用官方结果，再用押注记录补齐另一边。
+  addTeam(m.result);
+  (preds || []).forEach(p => addTeam(p.pick));
+  return teams;
+}
+
 function showAdminMatchPredsDetail(mid) {
   const all = (adminData?.matchPreds || []).filter(p => p.match_id === mid);
   if (!all.length) { toast('该场次无下注数据'); return; }
   const m = matchesData[mid] || {};
-  const t1 = m.team1 || '';
-  const t2 = m.team2 || '';
+  const teams = getDisplayTeamsForMatch(mid, all);
+  const t1 = teams[0] || '';
+  const t2 = teams[1] || '';
   const t1Display = displayTeamName(t1) || 'TBD';
   const t2Display = displayTeamName(t2) || 'TBD';
   const winnerCanon = canonicalTeam(m.result);
@@ -2057,9 +2077,10 @@ function renderMatchStats() {
     + '<th>场次</th><th>对阵</th><th>结果</th><th>用户押</th><th>注入</th><th>派彩</th><th>用户收益</th><th>赢家</th><th>输家</th><th>待结</th>'
     + '</tr></thead><tbody>';
   rows.forEach(m => {
-    const t1 = displayTeamName(m.team1) || 'TBD';
-    const t2 = displayTeamName(m.team2) || 'TBD';
-    const matchInfo = (m.team1 && m.team2) ? `${t1} vs ${t2}` : '-';
+    const teams = getDisplayTeamsForMatch(m.id, adminData?.matchPreds?.filter(p => p.match_id === m.id) || []);
+    const t1 = displayTeamName(teams[0]) || 'TBD';
+    const t2 = displayTeamName(teams[1]) || 'TBD';
+    const matchInfo = teams.length === 2 ? `${t1} vs ${t2}` : '-';
     const resultInfo = m.result ? `${displayTeamName(m.result)} ${m.score || ''}` : (m.locked ? '已封盘' : '进行中');
     const amt = m.total_amount || 0;
     const inj = m.injected_amount || 0;
